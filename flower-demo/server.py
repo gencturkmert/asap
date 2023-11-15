@@ -7,12 +7,12 @@ import flwr as fl
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.fc = nn.Linear(8, 1)  # Adjust input size based on your dataset
+        self.fc = nn.Linear(8, 1) 
 
     def forward(self, x):
         return self.fc(x)
 
-# Federated averaging strategy
+# FedAVG
 class PyTorchFlowerStrategy(fl.server.strategy.FedAvg):
     def aggregate_fit(self, rnd, results, failures, min_fit_clients):
         aggregated_model = super().aggregate_fit(rnd, results, failures, min_fit_clients)
