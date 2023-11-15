@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
 import numpy as np
+import scaler as scaler
 
 # PyTorch model definition
 class Net(nn.Module):
@@ -49,5 +50,10 @@ for client_id in range(10):
     # Distribute data to clients (adjust data distribution logic based on your needs)
     client_data = df.sample(frac=0.1)  # Adjust the fraction as needed
 
+   # Create an instance of DatasetScaler with global min-max values
+    scaler = DatasetScaler(data)
+
+    # Scale the dataset for the client
+    scaled_dataset = scaler.scale_dataset(data)
     # Start each client with its respective data
-    start_client(client_id, client_data)
+    start_client(client_id, scaled_dataset)
