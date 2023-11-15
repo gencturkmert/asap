@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import flwr as fl
+import scaler as scaler
+import pandas as pd
 
 # PyTorch model definition
 class Net(nn.Module):
@@ -30,6 +32,21 @@ def start_server():
     server = fl.Server(model, strategy)
 
     fl.app.serve(server, host="localhost", port=8080)
+    
+    df = pd.read_csv('your_data.csv')
+    sc = scaler(df)
+
+    train_fraction = 0.8
+    train_df = df.sample(frac=train_fraction)
+    test_df = df.drop(train_df.index)
+
+    scaled_test_dataset = sc.scale_dataset(test_df)
+
+
+    # Evaluate the final aggregated model on the test dataset
+    final_absolute_error = evaluate(model, scaled_test_dataset)
+    print(f"Final Mean Absolute Error on Test Dataset: {final_absolute_error}")
+
 
 if __name__ == "__main__":
     start_server()
