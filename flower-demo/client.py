@@ -5,6 +5,8 @@ import torch.optim as optim
 import pandas as pd
 import numpy as np
 import scaler as scaler
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_error
 
 # PyTorch model definition
 class Net(nn.Module):
@@ -21,6 +23,9 @@ def train(model, train_loader, epochs=1):
     optimizer = optim.SGD(model.parameters(), lr=0.01)
 
     for epoch in range(epochs):
+        model.train()  # Set the model to training mode
+        running_loss = 0.0
+
         for inputs, labels in train_loader:
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -28,32 +33,64 @@ def train(model, train_loader, epochs=1):
             loss.backward()
             optimizer.step()
 
-# Connect to the Flower server
-def start_client(client_id, data):
+            running_loss += loss.item()
+
+        # Calculate mean absolute error at the end of each epoch
+        epoch_absolute_error = evaluate(model, train_loader)
+        epoch_errors.append(epoch_absolute_error)
+
+        print(f"Epoch {epoch + 1}/{epochs} - Mean Absolute Error: {epoch_absolute_error}")
+
+    # Plot mean absolute error per epoch
+    plt.plot(range(1, epochs + 1), epoch_errors, marker='o')
+    plt.title('Mean Absolute Error per Epoch')
+    plt.xlabel('Epoch')
+    plt.ylabel('Mean Absolute Error')
+    plt.show()
+
+
+def evaluate(model, test_loader):
+    model.eval()
+    y_true = []
+    y_pred = []
+
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            outputs = model(inputs)
+            y_true.extend(labels.numpy())
+            y_pred.extend(outputs.numpy())
+
+    return mean_absolute_error(y_true, y_pred)
+
+def start_client(client_id, data, sc):
     model = Net()
 
-    # Convert DataFrame to PyTorch tensors
-    features = torch.tensor(data.drop("target_column", axis=1).values, dtype=torch.float32)
-    labels = torch.tensor(data["target_column"].values, dtype=torch.float32)
+    scaled_dataset = sc.scale_dataset(data)
 
-    # Create a PyTorch DataLoader
-    train_data = torch.utils.data.TensorDataset(features, labels)
+    features = scaled_dataset.drop("target_column", axis=1).values
+    labels = scaled_dataset["target_column"].values
+
+    train_data = torch.utils.data.TensorDataset(torch.tensor(features, dtype=torch.float32),
+                                                torch.tensor(labels, dtype=torch.float32))
     train_loader = torch.utils.data.DataLoader(train_data, batch_size=32, shuffle=True)
 
-    fl.client.start_numpy_client(f"localhost:8080", model=model, train_fn=train, num_rounds=3, client_id=f"client_{client_id}", train_loader=train_loader)
+    # Evaluate the initial model before training
+    initial_absolute_error = evaluate(model, train_loader)
+    print(f"Client {client_id} - Initial Absolute Error: {initial_absolute_error}")
 
-# Load your California housing dataset into a Pandas DataFrame (replace 'your_data.csv' with your actual data file)
-df = pd.read_csv('your_data.csv')
+    train(model, train_loader, epochs=3) 
 
-# Assuming you want to run 10 clients
+    final_absolute_error = evaluate(model, train_loader)
+    print(f"Client {client_id} - Final Absolute Error: {final_absolute_error}")
+
+
+
+
+
+df = pd.read_csv('cal_housing.csv')
+sc = scaler(df)
+
 for client_id in range(10):
-    # Distribute data to clients (adjust data distribution logic based on your needs)
-    client_data = df.sample(frac=0.1)  # Adjust the fraction as needed
+    client_data = df.sample(frac=0.1) 
 
-   # Create an instance of DatasetScaler with global min-max values
-    scaler = DatasetScaler(data)
-
-    # Scale the dataset for the client
-    scaled_dataset = scaler.scale_dataset(data)
-    # Start each client with its respective data
-    start_client(client_id, scaled_dataset)
+    start_client(client_id, client_data,sc)
