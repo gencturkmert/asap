@@ -22,7 +22,6 @@ class PyTorchFlowerStrategy(fl.server.strategy.FedAvg):
         state_dict = aggregated_model.parameters()
         return [param.data.numpy() for param in state_dict]
 
-# Start the Flower server with PyTorch model and custom strategy
 def start_server():
     model = Net()
     strategy = PyTorchFlowerStrategy(
@@ -30,9 +29,7 @@ def start_server():
     )
     server = fl.Server(model, strategy)
 
-    # Start Flower server
     fl.app.serve(server, host="localhost", port=8080)
 
 if __name__ == "__main__":
-    # Assuming you want to run the server on its own
     start_server()
