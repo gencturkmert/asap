@@ -1,4 +1,3 @@
-import os
 import math
 import argparse
 from typing import Dict, List, Tuple
@@ -12,24 +11,7 @@ from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split
 
 
-# Make TensorFlow logs less verbose
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-parser = argparse.ArgumentParser(description="Flower Simulation with Tensorflow/Keras")
-
-parser.add_argument(
-    "--num_cpus",
-    type=int,
-    default=1,
-    help="Number of CPUs to assign to a virtual client",
-)
-parser.add_argument(
-    "--num_gpus",
-    type=float,
-    default=0.0,
-    help="Ratio of GPU memory to assign to a virtual client",
-)
-parser.add_argument("--num_rounds", type=int, default=10, help="Number of FL rounds.")
 
 NUM_CLIENTS = 100
 VERBOSE = 0
@@ -69,7 +51,7 @@ def get_model():
         layers.Dense(1)  
         ]
     )
-    model.compile("adam", "sparse_categorical_crossentropy",metrics=['mae', 'mse'] )
+    model.compile("adam", "mean square error",metrics=["accuracy",'mae', 'mse'] )
     return model
 
 
@@ -154,9 +136,6 @@ def get_evaluate_fn(testset):
 
 
 def main() -> None:
-    # Parse input arguments
-    args = parser.parse_args()
-
     # Create dataset partitions (needed if your dataset is not pre-partitioned)
     partitions, testset = partition_dataset()
 
