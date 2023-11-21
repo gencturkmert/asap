@@ -173,23 +173,16 @@ def main() -> None:
         evaluate_fn=get_evaluate_fn(testset),  # global evaluation function
     )
 
-    # With a dictionary, you tell Flower's VirtualClientEngine that each
-    # client needs exclusive access to these many resources in order to run
-    client_resources = {
-        "num_cpus": args.num_cpus,
-        "num_gpus": args.num_gpus,
-    }
+
 
     # Start simulation
     fl.simulation.start_simulation(
         client_fn=get_client_fn(partitions),
         num_clients=NUM_CLIENTS,
-        config=fl.server.ServerConfig(num_rounds=args.num_rounds),
+        config=fl.server.ServerConfig(num_rounds=10),
         strategy=strategy,
-        client_resources=client_resources,
         actor_kwargs={
             "on_actor_init_fn": enable_tf_gpu_growth  # Enable GPU growth upon actor init
-            # does nothing if `num_gpus` in client_resources is 0.0
         },
     )
 
