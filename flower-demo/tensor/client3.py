@@ -18,7 +18,7 @@ model = tf.keras.models.Sequential(
 )
 model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae', 'mse'])
 
-(x_train, y_train), (x_test, y_test) = ut.partition_dataset(2,5,3)
+(x_train, y_train), (x_test, y_test) = ut.partition_dataset(2,4,2)
 
 
 class CifarClient(fl.client.NumPyClient):
@@ -65,9 +65,10 @@ class CifarClient(fl.client.NumPyClient):
     def evaluate(self, parameters, config):
         """Evaluate parameters on the locally held test set."""
         self.model.set_weights(parameters)
-        loss = tf.keras.losses.mean_squared_error(self.y_test, self.model.predict(self.x_test)).numpy()
-        mae = tf.keras.metrics.mean_absolute_error(self.y_test, self.model.predict(self.x_test)).numpy()
-        print("MAE",mae)
+        loss = tf.keras.losses.mean_squared_error(self.y_test, self.model.predict(self.x_test)).numpy().mean().item()
+        mae = tf.keras.metrics.mean_absolute_error(self.y_test, self.model.predict(self.x_test)).numpy().mean().item()
+        print("*************LOSS******************",loss)
+        print("************MAE********************",mae)
         return loss, len(self.x_train), {"mae": mae}
 
     def get_weights(self):
