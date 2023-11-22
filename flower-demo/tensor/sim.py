@@ -145,33 +145,54 @@ def get_evaluate_fn(testset):
 
 
 
-# Create dataset partitions (needed if your dataset is not pre-partitioned)
-partitions, testset = partition_dataset()
 
-# Create FedAvg strategy
-strategy = fl.server.strategy.FedAvg(
-    fraction_fit=0.1,  # Sample 10% of available clients for training
-    fraction_evaluate=0.05,  # Sample 5% of available clients for evaluation
-    min_fit_clients=10,  # Never sample less than 10 clients for training
-    min_evaluate_clients=5,  # Never sample less than 5 clients for evaluation
-    min_available_clients=int(
-        NUM_CLIENTS * 0.75
-    ),  # Wait until at least 75 clients are available
-    evaluate_metrics_aggregation_fn=weighted_average,  # aggregates federated metrics
-    evaluate_fn=get_evaluate_fn(testset),  # global evaluation function
-)
+#Simulation
+loss_with_noise = []
+for i in range(-4,4):
+  # Create dataset partitions (needed if your dataset is not pre-partitioned)
+  partitions, testset = partition_dataset(i)
+
+  # Create FedAvg strategy
+  strategy = fl.server.strategy.FedAvg(
+      fraction_fit=0.1,  # Sample 10% of available clients for training
+      fraction_evaluate=0.05,  # Sample 5% of available clients for evaluation
+      min_fit_clients=10,  # Never sample less than 10 clients for training
+      min_evaluate_clients=5,  # Never sample less than 5 clients for evaluation
+      min_available_clients=int(
+          NUM_CLIENTS * 0.75
+      ),  # Wait until at least 75 clients are available
+      evaluate_metrics_aggregation_fn=weighted_average,  # aggregates federated metrics
+      evaluate_fn=get_evaluate_fn(testset),  # global evaluation function
+  )
 
 
 
-# Start simulation
-fl.simulation.start_simulation(
-    client_fn=get_client_fn(partitions),
-    num_clients=NUM_CLIENTS,
-    config=fl.server.ServerConfig(num_rounds=10),
-    strategy=strategy,
-    actor_kwargs={
-        "on_actor_init_fn": enable_tf_gpu_growth  # Enable GPU growth upon actor init
-    },
-)
+  # Start simulation
+  history  = fl.simulation.start_simulation(
+      client_fn=get_client_fn(partitions),
+      num_clients=NUM_CLIENTS,
+      config=fl.server.ServerConfig(num_rounds=10),
+      strategy=strategy,
+      actor_kwargs={
+          "on_actor_init_fn": enable_tf_gpu_growth  # Enable GPU growth upon actor init
+      },
+  )
+
+  loss_with_noise.append(history.history['loss'][-1])
+
+noise_values = np.arange(-4, 4, 1)
+
+# Create a line plot
+plt.plot(noise_values, loss_with_noise, marker='o', linestyle='-')
+
+# Labeling the axes and giving the plot a title
+plt.xlabel('Noise')
+plt.ylabel('Loss')
+plt.title('Loss vs. Noise')
+
+# Display the plot
+plt.grid(True)
+plt.show()
+
 
 
