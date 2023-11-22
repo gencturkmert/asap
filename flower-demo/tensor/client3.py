@@ -11,7 +11,7 @@ from typing import Dict, Optional, Tuple
 model = tf.keras.models.Sequential(
     [
         layers.Input(shape=(8,)),  
-        layers.Dense(128, activation='relu'),
+        layers.Dense(64, activation='relu'),
         layers.Dense(64, activation='relu'),  
         layers.Dense(1)  
     ]

@@ -22,10 +22,9 @@ def get_evaluate_fn(model, x_test, y_test):
 
         # Evaluate the model on the test data
         predictions = model.predict(x_test)
-        loss = tf.keras.losses.mean_squared_error(y_test, predictions).numpy()
-        mae = tf.keras.metrics.mean_absolute_error(y_test, predictions).numpy()
+        loss = tf.keras.losses.mean_squared_error(y_test, predictions).numpy().mean().item()
+        mae = tf.keras.metrics.mean_absolute_error(y_test, predictions).numpy().mean().item()
 
-        # Assuming you want to return both loss and mean absolute error
         return loss, {"mae": mae}
 
     return evaluate
@@ -57,7 +56,7 @@ def evaluate_config(server_round: int):
 model = tf.keras.models.Sequential(
     [
         layers.Input(shape=(8,)),  
-        layers.Dense(128, activation='relu'),
+        layers.Dense(64, activation='relu'),
         layers.Dense(64, activation='relu'),  
         layers.Dense(1)  
     ]
@@ -67,17 +66,19 @@ model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae', 'mse'
 strategy = fl.server.strategy.FedAvg(
     fraction_fit=0.75,
     fraction_evaluate=1,
-    min_fit_clients=2,
-    min_evaluate_clients=3,
-    min_available_clients=3,
+    min_fit_clients=3,
+    min_evaluate_clients=4,
+    min_available_clients=4,
     evaluate_fn=get_evaluate_fn(model,x_test,y_test),
     on_fit_config_fn=fit_config,
     on_evaluate_config_fn=evaluate_config,
     initial_parameters=fl.common.ndarrays_to_parameters(model.get_weights()),
 )
 # Start Flower server
-fl.server.start_server(
+history = fl.server.start_server(
     server_address="127.0.0.1:8080",
-    config=fl.server.ServerConfig(num_rounds=5),
+    config=fl.server.ServerConfig(num_rounds=10),
     strategy = strategy
 )
+
+print(history)
