@@ -8,17 +8,8 @@ import utils as ut
 import numpy as np
 from typing import Dict, Optional, Tuple
 
-model = tf.keras.models.Sequential(
-    [
-        layers.Input(shape=(8,)),  
-        layers.Dense(64, activation='relu'),
-        layers.Dense(64, activation='relu'),  
-        layers.Dense(1)  
-    ]
-)
-model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae', 'mse'])
 
-(x_train, y_train), (x_test, y_test) = ut.partition_dataset(2,4,0)
+
 
 class CifarClient(fl.client.NumPyClient):
     def __init__(self, model, x_train, y_train, x_test, y_test):
@@ -78,6 +69,18 @@ class CifarClient(fl.client.NumPyClient):
         """Set the weights of the local model."""
         self.model.set_weights(weights)
 
+model = tf.keras.models.Sequential(
+    [
+        layers.Input(shape=(8,)),  
+        layers.Dense(64, activation='relu'),
+        layers.Dense(64, activation='relu'),  
+        layers.Dense(1)  
+    ]
+)
+
+model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae', 'mse'])
+
+(x_train, y_train), (x_test, y_test) = ut.partition_dataset(2,4,0)
 
 client = CifarClient(model, x_train, y_train, x_test, y_test)
 
