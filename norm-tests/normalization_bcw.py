@@ -644,7 +644,7 @@ parameters_dict.update({
         'value': '1'}
     })
 
-sweep_id = wandb.sweep(sweep_config, project="mnist_test_v6")
+sweep_id = wandb.sweep(sweep_config, project="bcw_test_v1")
 #sweep_id = "xecrtjox" # to continue a sweep
 import time
 
