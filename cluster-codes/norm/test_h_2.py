@@ -577,7 +577,7 @@ parameters_dict.update({
     })
 
 sweep_id = wandb.sweep(sweep_config, project="hepatisis_test_v3")
-# sweep_id = "xu4dawk3" # to continue a sweep
+sweep_id = "wy75h21h" # to continue a sweep
 import time
 
 def train(config = None):
@@ -683,4 +683,4 @@ def train(config = None):
 
 
 wandb.agent(sweep_id, train)
-# wandb.agent(sweep_id, project="hepatisis_test_v3", function=train)
+wandb.agent(sweep_id, project="hepatisis_test_v3", function=train)
