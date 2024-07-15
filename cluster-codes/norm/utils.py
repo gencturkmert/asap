@@ -1,10 +1,12 @@
 import numpy as np
 
-
-def split(org_data, merged_array):
-    lens = [len(org_data[i]) for i in range(len(org_data))]
-    split_arrays = np.split(merged_array, np.cumsum(lens)[:-1])
-    return split_arrays
+def split(org_data, merged_array, label_array):
+    total_length = sum(arr.shape[0] for arr in org_data)
+    ratios = [arr.shape[0] / total_length for arr in org_data]
+    split_indices = np.cumsum([int(ratio * merged_array.shape[0]) for ratio in ratios[:-1]])
+    split_arrays = np.split(merged_array, split_indices)
+    label_split_arrays = np.split(label_array, split_indices)
+    return split_arrays, label_split_arrays
 
 def merge(data):
   return np.concatenate(data, axis=0)

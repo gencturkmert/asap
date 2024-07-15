@@ -121,7 +121,8 @@ def do_skew(skew_type, num_clients, X_data, Y_data):
 
 """# Normalization Methods"""
 
-def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
+def do_normalization(normalization_type, num_clients, X_data, val_x, test_x, Y_data, val_y, test_y):
+
     global NORMALIZATION_LAYER
 
     NORMALIZATION_LAYER = 'default'
@@ -136,6 +137,7 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
         NORMALIZATION_LAYER = 'group_norm'
     elif normalization_type == 'local_box_cox':
         for i in range(num_clients):
+            print(i)
             X_data[i] = box_cox(X_data[i],val_x[i],test_x[i])
 
     elif normalization_type == 'local_yeo_johnson':
@@ -162,46 +164,75 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = z_score(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_min_max':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = min_max(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_box_cox':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = box_cox(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_robust_scaling':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = robust_scaling(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_yeo_johnson':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
         merged_train, merged_val, merged_test = yeo_johnson(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'default':
         pass  # default case
@@ -209,7 +240,7 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
     else:
         print("error")
 
-    return X_data, val_x, test_x
+    return X_data, val_x, test_x, Y_data, val_y, test_y
 
 """# Network Model (Dataset Specific)"""
 
@@ -557,7 +588,10 @@ def train(config = None):
 
         global NUM_CLIENTS
         global X_test_fed
+        global Y_test_fed
+
         global X_val_fed
+        global Y_val_fed
 
 
         NUM_CLIENTS = config['a_num_clients']
@@ -565,15 +599,18 @@ def train(config = None):
         load_data()
 
         clientsData, clientLabels = do_skew(config['b_skew'], config['a_num_clients'], X_trains_fed, Y_trains_fed)
-        val_x = split(clientsData, X_val_fed)
-        test_x = split(clientsData, X_test_fed)
+        val_x, val_y = split(clientsData, X_val_fed, Y_val_fed)
+        test_x, test_y = split(clientsData, X_test_fed, Y_test_fed)
 
         #validation and test datasets are normalized with same parameters train dataset is normalized.
         #Data distribution among clients are protected, for local normalization, val and test datasets are normalized with respect to their local train data normalization parameters.
-        normalizedData, val_x, test_x = do_normalization(config['c_normalization'], config['a_num_clients'], clientsData, val_x, test_x)
+        normalizedData, val_x, test_x, clientLabels, val_y, test_y = do_normalization(config['c_normalization'], config['a_num_clients'], clientsData, val_x, test_x, clientLabels, val_y, test_y)
 
         X_val_fed = merge(val_x)
+        Y_val_fed = merge(val_y)
+
         X_test_fed = merge(test_x)
+        Y_test_fed = merge(test_y)
 
         t1 = time.perf_counter(), time.process_time()
 
