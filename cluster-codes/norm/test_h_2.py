@@ -12,27 +12,22 @@ from flwr.common import Metrics
 from flwr.common.typing import Scalar
 from collections import OrderedDict
 from typing import List, Tuple, Dict, Optional
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import RobustScaler
-from sklearn.preprocessing import PowerTransformer
 
-#import matplotlib.pyplot as plt
+from norms import *
+from utils import *
+
 import numpy as np
 import csv
 import tensorflow as tf
-#import os
 
 from flwr.simulation.ray_transport.utils import enable_tf_gpu_growth
 from skew import *
 
-print("bas3")
 #os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
 enable_tf_gpu_growth()
 
 
 """# Global Constants (Dataset Specific)"""
-print("bas4")
 # global variables
 BATCH_SIZE = 8
 EPOCH = 150
@@ -43,23 +38,14 @@ NUM_CLIENTS = 10
 EARLY_STOPPING_PATIENCE = 7
 DATASET_INPUT_SHAPE = (12,1)
 IS_IMAGE_DATA = False
-#tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE) = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
-print("bas2")
-# variable arrays for each case
+
 X_trains_fed = np.zeros(1)
 Y_trains_fed = np.zeros(1)
 X_test_fed = np.zeros(1) # test sets are not actually splitted but we use it as a variable array
 Y_test_fed = np.zeros(1)
 X_val_fed = np.zeros(1)
 Y_val_fed = np.zeros(1)
-print("bas")
-# # constant arrays to always keep the originals
-# X_TRAIN = np.zeros(1)
-# Y_TRAIN = np.zeros(1)
-# X_VALIDATION = np.zeros(1)
-# Y_VALIDATION = np.zeros(1)
-# X_TEST= np.zeros(1)
-# Y_TEST= np.zeros(1)
+
 
 """# Dataset Retrieval"""
 
@@ -112,9 +98,6 @@ def load_data(data_dir=""):
 
 
 def do_skew(skew_type, num_clients, X_data, Y_data):
-
-    #depends on dataset
-
     if(skew_type == 'feature_0.3'):
       clientsData, clientsDataLabels = feature_skew_dist(X_data,  Y_data,num_clients, sigma = 0.3, batch_size=BATCH_SIZE)
     elif(skew_type == 'feature_0.7'):
@@ -138,104 +121,7 @@ def do_skew(skew_type, num_clients, X_data, Y_data):
 
 """# Normalization Methods"""
 
-def merge(data):
-  return np.concatenate(data, axis=0)
-
-def split(org_data, merged_array):
-    total_length = sum(arr.shape[0] for arr in org_data)
-    ratios = [arr.shape[0] / total_length for arr in org_data]
-    split_indices = np.cumsum([int(ratio * merged_array.shape[0]) for ratio in ratios[:-1]])
-    split_arrays = np.split(merged_array, split_indices)
-    return split_arrays
-
-def flatten_data(data):
-    return data.reshape(data.shape[0],-1)
-
-def flatten_data_for_clients(clientsData):
-    flattened_clients_data = [flatten_data(client_data) for client_data in clientsData]
-    return flattened_clients_data
-
-def back_to_image(data):
-    return data.reshape(data.shape[0], *DATASET_INPUT_SHAPE)
-
-def back_to_image_for_clients(clientsData):
-    back_to_image_data = [back_to_image(client_data) for client_data in clientsData]
-    return back_to_image_data
-
-def z_score(train,val,test):
-    if len(train) > 0 and len(val) > 0 and len(test) > 0:
-        scaler = StandardScaler()
-        scaler.fit(train,None)
-        return (scaler.transform(train), scaler.transform(val), scaler.transform(test))
-    else:
-        return train, val, test
-
-def min_max(train,val,test):
-    if len(train) > 0 and len(val) > 0 and len(test) > 0:
-        scaler = MinMaxScaler()
-        scaler.fit(train,None)
-        return (scaler.transform(train), scaler.transform(val), scaler.transform(test))
-    else:
-        return train, val, test
-
-def log_scaling(train, val, test):
-    return (np.log10(train + 1), np.log10(val + 1), np.log10(test + 1))
-
-def batch_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'batch_norm'
-    return
-
-def layer_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'layer_norm'
-    return
-
-def instance_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'instance_norm'
-    return
-
-def group_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'group_norm'
-    return
-
-def box_cox(train,val,test):
-    if len(train) > 0 and len(val) > 0 and len(test) > 0:
-        transformer = PowerTransformer(method = 'box-cox')
-        transformer.fit(train,None)
-        #print("fit passed")
-        return (transformer.transform(train+1), transformer.transform(val+1),transformer.transform(test+1))
-    else:
-        return train, val, test
-    
-def yeo_johnson(train,val,test):
-    if len(train) > 0 and len(val) > 0 and len(test) > 0:
-        transformer = PowerTransformer(method = 'yeo-johnson')
-        transformer.fit(train,None)
-        return (transformer.transform(train), transformer.transform(val),transformer.transform(test))
-    else:
-        return train, val, test
-
-
-def robust_scaling(train,val,test, with_centering=True, with_scaling=True, quantile_range=(25.0, 75.0)):
-    if len(train) > 0 and len(val) > 0 and len(test) > 0:
-        scaler = RobustScaler(with_centering=with_centering, with_scaling=with_scaling, quantile_range=quantile_range)
-        scaler.fit(train,None)
-        return (scaler.transform(train), scaler.transform(val),scaler.transform(test))
-    else:
-        return train, val, test
-
 def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
-
-
-    if(IS_IMAGE_DATA):
-        X_data = flatten_data_for_clients(X_data)
-        val_x = flatten_data_for_clients(val_x)
-        test_x = flatten_data_for_clients(test_x)
-
-
     global NORMALIZATION_LAYER
 
     NORMALIZATION_LAYER = 'default'
@@ -322,12 +208,6 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
 
     else:
         print("error")
-
-
-    if(IS_IMAGE_DATA):
-        X_data = back_to_image_for_clients(X_data)
-        val_x = back_to_image_for_clients(val_x)
-        test_x = back_to_image_for_clients(test_x)
 
     return X_data, val_x, test_x
 
@@ -766,4 +646,4 @@ def train(config = None):
 
 
 wandb.agent(sweep_id, train)
-wandb.agent(sweep_id, project="hepatisis_test_v1", function=train) # to continue a sweep
+wandb.agent(sweep_id, project="hepatisis_test_v3", function=train)
