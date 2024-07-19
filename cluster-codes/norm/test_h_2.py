@@ -488,12 +488,11 @@ def get_results():
         Y_test_fed = np.argmax(Y_test_fed, axis=1)
 
     # Calculate metrics
-    accuracy = accuracy_score(Y_test_fed, y_pred)
     precision = precision_score(Y_test_fed, y_pred, average='weighted')
     recall = recall_score(Y_test_fed, y_pred, average='weighted')
     f1 = f1_score(Y_test_fed, y_pred, average='weighted')
 
-    return accuracy, precision, recall, f1, test_loss
+    return test_accuracy, precision, recall, f1, test_loss
 
 def federated_train(x, y, num_clients):
 
