@@ -58,9 +58,6 @@ def load_data(data_dir=""):
         y_data = np.array(list(reader), dtype=float)
 
     y_data = y_data[:, 1]
-    
-    print("x_data shape:", x_data.shape)
-    print("y_data shape:", y_data.shape)
 
     # Split data into training, testing, and validation sets
     x_train, x_test, y_train, y_test = train_test_split(
@@ -398,9 +395,6 @@ def federated_train(x, y, num_clients):
         y_pred = global_model.predict(X_val_fed)
         y_pred = np.squeeze(y_pred)  # Removes dimensions of size 1
         
-        print("pred shape:", y_pred.shape)
-        print("Y_val_fed shape:", Y_val_fed.shape)
-        
         val_mae = mean_absolute_error(Y_val_fed, y_pred)
         val_r2 = r2_score(Y_val_fed, y_pred)
 
@@ -408,7 +402,15 @@ def federated_train(x, y, num_clients):
         history["val_loss"].append(val_loss)
         history["val_mae"].append(val_mae)
         history["val_r2"].append(val_r2)
-
+        
+        print(f"Epoch {epoch + 1} Results:")
+        print(f"  Distributed Train Loss: {avg_train_loss}")
+        print(f"  Centralized Train Loss: {centralized_train_loss}")
+        print(f"  Validation Loss: {val_loss}")
+        print(f"  Validation MAE: {val_mae}")
+        print(f"  Validation R2: {val_r2}")
+        print(f"  Global Weights Shape: {[np.array(w).shape for w in global_weights]}")
+        
         # Early stopping logic
         if val_loss < best_loss - 0.00001:
             best_loss = val_loss
