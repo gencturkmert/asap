@@ -280,7 +280,7 @@ def get_model():
     model.add(tf.keras.layers.Dense(units=32, activation="relu"))
     model.add(tf.keras.layers.Dropout(0.2))
     model.add(tf.keras.layers.Dense(units=16, activation="relu"))
-    model.add(tf.keras.layers.Dense(units=2))
+    model.add(tf.keras.layers.Dense(units=1))
     return model
 
 
