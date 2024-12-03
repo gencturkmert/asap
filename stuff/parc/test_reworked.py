@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from norms import *
 from utils import *
-
+import argparse
 import numpy as np
 import csv
 import tensorflow as tf
@@ -18,7 +18,6 @@ NUM_CLIENTS = 10
 # NORMALIZATION_TYPE = ''
 EARLY_STOPPING_PATIENCE = 20
 DATASET_INPUT_SHAPE = (20, 1)
-IS_IMAGE_DATA = False
 
 X_trains_fed = np.zeros(1)
 Y_trains_fed = np.zeros(1)
@@ -601,6 +600,19 @@ def train(config=None):
         global_weights = np.array([])
         best_loss = float("inf")
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Run WandB sweep with custom sweep_id and project name.")
+    parser.add_argument("--sweep_id", type=str, required=True, help="WandB Sweep ID")
+    parser.add_argument("--project", type=str, required=True, help="WandB Project Name")
+    return parser.parse_args()
 
-wandb.agent(sweep_id, train)
-wandb.agent(sweep_id, project="parcV1", function=train)
+if __name__ == "__main__":
+    args = parse_arguments()
+
+    # Initialize WandB sweep with provided sweep_id and project name
+    wandb.agent(
+        args.sweep_id,
+        project=args.project,
+        function=train
+    )
+
