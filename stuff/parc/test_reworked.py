@@ -374,6 +374,10 @@ def federated_train(x, y, num_clients):
 
         # Set global weights for the global model
         global_model.set_weights(global_weights)
+        global_model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
+            loss="mean_squared_error",
+        )
 
         # Evaluate centralized training loss (global model on all client training data)
         combined_x = np.concatenate(x, axis=0)
@@ -383,11 +387,6 @@ def federated_train(x, y, num_clients):
         )
         history["centralized_train_loss"].append(centralized_train_loss)
 
-        # Evaluate global model on validation data
-        global_model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-            loss="mean_squared_error",
-        )
         val_loss = global_model.evaluate(
             X_val_fed, Y_val_fed, batch_size=BATCH_SIZE, verbose=0
         )
