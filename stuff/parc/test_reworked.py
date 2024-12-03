@@ -637,6 +637,10 @@ if __name__ == "__main__":
         "a_num_clients": {"values": [10, 20, 30]},
         "c_normalization": {
             "values": [
+                "local_box_cox",
+                "local_yeo_johnson",
+                "global_box_cox",
+                "global_yeo_johnson",
                 "local_z_score",
                 "local_min_max",
                 "batch_norm",
