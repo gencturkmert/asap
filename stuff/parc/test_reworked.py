@@ -12,6 +12,8 @@ import time
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 
+from tensorflow.keras.mixed_precision import experimental as mixed_precision
+
 
 """# Global Constants (Dataset Specific)"""
 # global variables
@@ -322,6 +324,9 @@ def get_results():
 
 def federated_train(x, y, num_clients):
     global global_weights, X_val_fed, Y_val_fed, best_r2, best_loss
+    
+    policy = mixed_precision.Policy('mixed_float16')
+    mixed_precision.set_policy(policy)
 
     # Initialize client models and global model
     models = [get_model() for _ in range(num_clients)]
