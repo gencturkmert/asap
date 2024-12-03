@@ -7,6 +7,12 @@ import numpy as np
 import csv
 import tensorflow as tf
 from skew import *
+import wandb
+import time
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, r2_score
+
 
 """# Global Constants (Dataset Specific)"""
 # global variables
@@ -15,26 +21,30 @@ EPOCH = 250
 LEARNING_RATE = 0.001
 NORMALIZATION_LAYER = ""
 NUM_CLIENTS = 10
-# NORMALIZATION_TYPE = ''
 EARLY_STOPPING_PATIENCE = 20
 DATASET_INPUT_SHAPE = (20, 1)
 
-X_trains_fed = np.zeros(1)
-Y_trains_fed = np.zeros(1)
-X_test_fed = np.zeros(
-    1
-)  # test sets are not actually splitted but we use it as a variable array
-Y_test_fed = np.zeros(1)
-X_val_fed = np.zeros(1)
-Y_val_fed = np.zeros(1)
 
-global_weights = np.zeros(1)
+def initialize_globals():
+    global X_trains_fed, Y_trains_fed, X_test_fed, Y_test_fed, X_val_fed, Y_val_fed
+    global global_weights, best_r2, weights, best_loss
+
+    # Dataset-related globals
+    X_trains_fed = np.zeros((1,))
+    Y_trains_fed = np.zeros((1,))
+    X_test_fed = np.zeros((1,))
+    Y_test_fed = np.zeros((1,))
+    X_val_fed = np.zeros((1,))
+    Y_val_fed = np.zeros((1,))
+
+    # Model-related globals
+    global_weights = np.zeros((1,))
+    best_r2 = 0.0
+    weights = np.array([])
+    best_loss = float("inf")
 
 
 """# Dataset Retrieval"""
-
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
 
 
 def load_data(data_dir=""):
@@ -279,10 +289,6 @@ def get_model():
 
 
 # Required for early stopping
-best_r2 = 0.0
-weights = np.array([])
-best_loss = float("inf")
-minimum_delta = 0.001  # Example: require at least 0.001 decrease in loss
 
 
 def get_results():
@@ -325,13 +331,13 @@ def federated_train(x, y, num_clients):
 
     # Initialize history and early stopping parameters
     history = {
-        'val_loss': [],
-        'val_mae': [],
-        'val_r2': [],
-        'distributed_train_loss': [],
-        'centralized_train_loss': []
+        "val_loss": [],
+        "val_mae": [],
+        "val_r2": [],
+        "distributed_train_loss": [],
+        "centralized_train_loss": [],
     }
-    best_val_loss = float('inf')
+    best_val_loss = float("inf")
     patience_counter = 0
 
     for epoch in range(EPOCH):
@@ -346,7 +352,7 @@ def federated_train(x, y, num_clients):
             # Compile the client model
             models[i].compile(
                 optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-                loss='mean_squared_error'
+                loss="mean_squared_error",
             )
 
             # Train the client model on its respective data
@@ -355,14 +361,14 @@ def federated_train(x, y, num_clients):
             )
 
             # Record client training loss
-            client_train_losses.append(history_per_client.history['loss'][-1])
+            client_train_losses.append(history_per_client.history["loss"][-1])
 
             # Collect client weights
             client_weights.append(models[i].get_weights())
 
         # Calculate distributed training loss (average of client losses)
         avg_train_loss = np.mean(client_train_losses)
-        history['distributed_train_loss'].append(avg_train_loss)
+        history["distributed_train_loss"].append(avg_train_loss)
 
         # Apply FedAvg to aggregate client weights
         global_weights = fedavg(client_weights)
@@ -376,23 +382,25 @@ def federated_train(x, y, num_clients):
         centralized_train_loss = global_model.evaluate(
             combined_x, combined_y, batch_size=BATCH_SIZE, verbose=0
         )
-        history['centralized_train_loss'].append(centralized_train_loss)
+        history["centralized_train_loss"].append(centralized_train_loss)
 
         # Evaluate global model on validation data
         global_model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
             loss="mean_squared_error",
         )
-        val_loss = global_model.evaluate(X_val_fed, Y_val_fed, batch_size=BATCH_SIZE, verbose=0)
+        val_loss = global_model.evaluate(
+            X_val_fed, Y_val_fed, batch_size=BATCH_SIZE, verbose=0
+        )
         y_pred = global_model.predict(X_val_fed)
 
         val_mae = mean_absolute_error(Y_val_fed, y_pred)
         val_r2 = r2_score(Y_val_fed, y_pred)
 
         # Store validation metrics in history
-        history['val_loss'].append(val_loss)
-        history['val_mae'].append(val_mae)
-        history['val_r2'].append(val_r2)
+        history["val_loss"].append(val_loss)
+        history["val_mae"].append(val_mae)
+        history["val_r2"].append(val_r2)
 
         # Early stopping logic
         if val_loss < best_loss - minimum_delta:
@@ -406,68 +414,19 @@ def federated_train(x, y, num_clients):
                 break
 
     test_loss, test_mae, test_r2 = get_results()
-    return history
-
+    return history, test_loss, test_mae, test_r2
 
 
 def fedavg(client_weights):
     """Implements the FedAvg algorithm to aggregate client weights."""
-    avg_weights = [np.mean([weights[layer] for weights in client_weights], axis=0) 
-                   for layer in range(len(client_weights[0]))]
+    avg_weights = [
+        np.mean([weights[layer] for weights in client_weights], axis=0)
+        for layer in range(len(client_weights[0]))
+    ]
     return avg_weights
 
 
 """# Training and Saving the Results"""
-
-import wandb
-
-wandb.login()
-
-sweep_config = {"method": "grid"}
-
-metric = {"name": "val_loss", "goal": "minimize"}
-
-sweep_config["metric"] = metric
-
-parameters_dict = {
-    "b_skew": {
-        "values": [
-            "default",
-            "feature_0.3",
-            "feature_0.7",
-            "label_5.0",
-            "label_0.5",
-            "quantity_5.0",
-            "quantity_0.7",
-        ]
-    },
-    "a_num_clients": {"values": [10, 20, 30]},
-    "c_normalization": {
-        "values": [
-            "local_z_score",
-            "local_min_max",
-            "batch_norm",
-            "layer_norm",
-            "group_norm",
-            "instance_norm",
-            "local_robust_scaling",
-            "global_z_score",
-            "global_min_max",
-            "global_robust_scaling",
-            "default",
-        ]
-    },
-}
-
-sweep_config["parameters"] = parameters_dict
-
-parameters_dict.update(
-    {"dataset": {"value": "parcinson"}, "experiment_run": {"value": "1"}}
-)
-
-sweep_id = wandb.sweep(sweep_config, project="parcV1")
-# sweep_id = "wmd7yn42" # to continue a sweep
-import time
 
 
 def train(config=None):
@@ -514,8 +473,8 @@ def train(config=None):
 
         t1 = time.perf_counter(), time.process_time()
 
-       # Call the federated_train function
-        history = federated_train(
+        # Call the federated_train function
+        history, test_loss, test_mae, test_r2 = federated_train(
             normalizedData, clientLabels, config["a_num_clients"]
         )
 
@@ -527,9 +486,9 @@ def train(config=None):
 
         # Determine early-stopped epoch based on validation loss history
         early_stopped_epoch = (
-            len(history['centralized_train_loss']) - EARLY_STOPPING_PATIENCE - 1
-            if len(history['centralized_train_loss']) < EPOCH + 1
-            else len(history['centralized_train_loss']) - 1
+            len(history["centralized_train_loss"]) - EARLY_STOPPING_PATIENCE - 1
+            if len(history["centralized_train_loss"]) < EPOCH + 1
+            else len(history["centralized_train_loss"]) - 1
         )
 
         # Log time and results to WandB
@@ -543,76 +502,136 @@ def train(config=None):
 
         # Log distributed and centralized losses
         distributed_loss_table = wandb.Table(
-            data=[[i, loss] for i, loss in enumerate(history['distributed_train_loss'])],
-            columns=["Epoch", "Distributed Loss"]
+            data=[
+                [i, loss] for i, loss in enumerate(history["distributed_train_loss"])
+            ],
+            columns=["Epoch", "Distributed Loss"],
         )
         wandb.log(
             {
                 "distributed_loss": wandb.plot.line(
-                    distributed_loss_table, "Epoch", "Distributed Loss",
-                    title="Distributed Training Loss vs Epoch"
+                    distributed_loss_table,
+                    "Epoch",
+                    "Distributed Loss",
+                    title="Distributed Training Loss vs Epoch",
                 )
             }
         )
 
         centralized_loss_table = wandb.Table(
-            data=[[i, loss] for i, loss in enumerate(history['centralized_train_loss'])],
-            columns=["Epoch", "Centralized Loss"]
+            data=[
+                [i, loss] for i, loss in enumerate(history["centralized_train_loss"])
+            ],
+            columns=["Epoch", "Centralized Loss"],
         )
         wandb.log(
             {
                 "centralized_loss": wandb.plot.line(
-                    centralized_loss_table, "Epoch", "Centralized Loss",
-                    title="Centralized Training Loss vs Epoch"
+                    centralized_loss_table,
+                    "Epoch",
+                    "Centralized Loss",
+                    title="Centralized Training Loss vs Epoch",
                 )
             }
         )
 
         # Log validation metrics
         validation_loss_table = wandb.Table(
-            data=[[i, loss] for i, loss in enumerate(history['val_loss'])],
-            columns=["Epoch", "Validation Loss"]
+            data=[[i, loss] for i, loss in enumerate(history["val_loss"])],
+            columns=["Epoch", "Validation Loss"],
         )
         wandb.log(
             {
                 "validation_loss": wandb.plot.line(
-                    validation_loss_table, "Epoch", "Validation Loss",
-                    title="Validation Loss vs Epoch"
+                    validation_loss_table,
+                    "Epoch",
+                    "Validation Loss",
+                    title="Validation Loss vs Epoch",
                 )
             }
         )
 
         validation_r2_table = wandb.Table(
-            data=[[i, r2] for i, r2 in enumerate(history['val_r2'])],
-            columns=["Epoch", "Validation R2"]
+            data=[[i, r2] for i, r2 in enumerate(history["val_r2"])],
+            columns=["Epoch", "Validation R2"],
         )
         wandb.log(
             {
                 "validation_r2": wandb.plot.line(
-                    validation_r2_table, "Epoch", "Validation R2",
-                    title="Validation R2 vs Epoch"
+                    validation_r2_table,
+                    "Epoch",
+                    "Validation R2",
+                    title="Validation R2 vs Epoch",
                 )
             }
         )
-
 
         best_r2 = 0.0
         global_weights = np.array([])
         best_loss = float("inf")
 
+
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Run WandB sweep with custom sweep_id and project name.")
-    parser.add_argument("--sweep_id", type=str, required=True, help="WandB Sweep ID")
+    parser = argparse.ArgumentParser(
+        description="Run WandB sweep with custom sweep_id and project name."
+    )
+    parser.add_argument("--sweep_id", type=str, required=False, help="WandB Sweep ID")
     parser.add_argument("--project", type=str, required=True, help="WandB Project Name")
     return parser.parse_args()
 
+
 if __name__ == "__main__":
     args = parse_arguments()
+    initialize_globals()
 
-    # Initialize WandB sweep with provided sweep_id and project name
-    wandb.agent(
-        args.sweep_id,
-        project=args.project,
-        function=train
+    wandb.login()
+
+    sweep_config = {"method": "grid"}
+
+    metric = {"name": "val_loss", "goal": "minimize"}
+
+    sweep_config["metric"] = metric
+
+    parameters_dict = {
+        "b_skew": {
+            "values": [
+                "default",
+                "feature_0.3",
+                "feature_0.7",
+                "label_5.0",
+                "label_0.5",
+                "quantity_5.0",
+                "quantity_0.7",
+            ]
+        },
+        "a_num_clients": {"values": [10, 20, 30]},
+        "c_normalization": {
+            "values": [
+                "local_z_score",
+                "local_min_max",
+                "batch_norm",
+                "layer_norm",
+                "group_norm",
+                "instance_norm",
+                "local_robust_scaling",
+                "global_z_score",
+                "global_min_max",
+                "global_robust_scaling",
+                "default",
+            ]
+        },
+    }
+
+    sweep_config["parameters"] = parameters_dict
+
+    parameters_dict.update(
+        {"dataset": {"value": "parcinson"}, "experiment_run": {"value": "1"}}
     )
 
+    sweep_id = wandb.sweep(sweep_config, project=args.project)
+
+    if not args.sweep_id:
+        args.sweep_id = sweep_id
+
+    # Initialize WandB sweep with provided sweep_id and project name
+    wandb.agent(args.sweep_id, project=args.project, function=train)
