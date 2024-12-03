@@ -395,8 +395,8 @@ def federated_train(x, y, num_clients):
         
         y_pred = global_model.predict(X_val_fed)
         
-        print("pred shape:", y_pred)
-        print("Y_val_fed shape:", Y_val_fed)
+        print("pred shape:", y_pred.shape)
+        print("Y_val_fed shape:", Y_val_fed.shape)
         
         val_mae = mean_absolute_error(Y_val_fed, y_pred)
         val_r2 = r2_score(Y_val_fed, y_pred)
