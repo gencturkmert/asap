@@ -438,7 +438,7 @@ def evaluate(
 
     loss = model.evaluate(X_val_fed, Y_val_fed, batch_size=BATCH_SIZE, verbose=0)
     y_pred = model.predict(X_val_fed)
-    r2 = r2_score(Y_test_fed, y_pred)
+    r2 = r2_score(Y_val_fed, y_pred)
     
     global best_r2
     global best_loss
@@ -459,7 +459,6 @@ def evaluate(
 
     return loss, {"r2": r2}
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
 def get_results():
     '''
     At the end of the federated learning process, calculates results and returns
@@ -624,7 +623,7 @@ def train(config = None):
         wandb.log({"test_r2": test_r2})
         wandb.log({"test_mae": test_mae})
         wandb.log({"validation_loss": best_loss})
-        wandb.log({"validation_accuracy": best_r2})
+        wandb.log({"validation r2": best_r2})
 
 
         table = wandb.Table(data=history.losses_distributed, columns=["x", "y"])
