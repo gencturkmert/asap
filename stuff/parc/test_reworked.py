@@ -58,6 +58,9 @@ def load_data(data_dir=""):
         y_data = np.array(list(reader), dtype=float)
 
     y_data = y_data[:, 1]
+    
+    print("x_data shape:", x_data.shape)
+    print("y_data shape:", y_data.shape)
 
     # Split data into training, testing, and validation sets
     x_train, x_test, y_train, y_test = train_test_split(
@@ -336,7 +339,6 @@ def federated_train(x, y, num_clients):
         "distributed_train_loss": [],
         "centralized_train_loss": [],
     }
-    best_val_loss = float("inf")
     patience_counter = 0
 
     for epoch in range(EPOCH):
@@ -390,8 +392,12 @@ def federated_train(x, y, num_clients):
         val_loss = global_model.evaluate(
             X_val_fed, Y_val_fed, batch_size=BATCH_SIZE, verbose=0
         )
+        
         y_pred = global_model.predict(X_val_fed)
-
+        
+        print("pred shape:", y_pred)
+        print("Y_val_fed shape:", Y_val_fed)
+        
         val_mae = mean_absolute_error(Y_val_fed, y_pred)
         val_r2 = r2_score(Y_val_fed, y_pred)
 
