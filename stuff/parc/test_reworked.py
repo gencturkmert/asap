@@ -314,6 +314,8 @@ def get_results():
     test_loss = model.evaluate(X_test_fed, Y_test_fed, batch_size=BATCH_SIZE, verbose=0)
 
     y_pred = model.predict(X_test_fed)
+    y_pred = np.squeeze(y_pred)  # Removes dimensions of size 1
+
 
     test_mae = mean_absolute_error(Y_test_fed, y_pred)
     test_r2 = r2_score(Y_test_fed, y_pred)
@@ -394,6 +396,7 @@ def federated_train(x, y, num_clients):
         )
         
         y_pred = global_model.predict(X_val_fed)
+        y_pred = np.squeeze(y_pred)  # Removes dimensions of size 1
         
         print("pred shape:", y_pred.shape)
         print("Y_val_fed shape:", Y_val_fed.shape)
