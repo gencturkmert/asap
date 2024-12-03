@@ -63,6 +63,8 @@ def load_data(data_dir=""):
     with open(f"{data_dir}y.csv", mode='r') as file:
         reader = csv.reader(file)
         y_data = np.array(list(reader), dtype=float)
+        
+    y_data = y_data[:, 1]
 
     # Split data into training, testing, and validation sets
     x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, test_size=0.2, shuffle=True, random_state=42)
