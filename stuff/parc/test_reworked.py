@@ -263,7 +263,7 @@ def do_normalization(
 
 def get_model():
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Dense(units=128, activation="relu"))
+    model.add(tf.keras.layers.Dense(units=128, activation="relu", input_shape=DATASET_INPUT_SHAPE))
 
     if NORMALIZATION_LAYER == "batch_norm":
         model.add(tf.keras.layers.BatchNormalization())
@@ -370,7 +370,7 @@ def federated_train(x, y, num_clients):
         history["distributed_train_loss"].append(avg_train_loss)
 
         # Apply FedAvg to aggregate client weights
-        global_weights = fedavg(client_weights)
+        global_weights = fedavg(client_weights,x)
 
         # Set global weights for the global model
         global_model.set_weights(global_weights)
@@ -402,7 +402,7 @@ def federated_train(x, y, num_clients):
         history["val_r2"].append(val_r2)
 
         # Early stopping logic
-        if val_loss < best_loss - minimum_delta:
+        if val_loss < best_loss - 0.00001:
             best_loss = val_loss
             best_r2 = val_r2
             patience_counter = 0
@@ -416,13 +416,34 @@ def federated_train(x, y, num_clients):
     return history, test_loss, test_mae, test_r2
 
 
-def fedavg(client_weights):
-    """Implements the FedAvg algorithm to aggregate client weights."""
-    avg_weights = [
-        np.mean([weights[layer] for weights in client_weights], axis=0)
-        for layer in range(len(client_weights[0]))
-    ]
-    return avg_weights
+def fedavg(client_weights, client_data):
+    """
+    Implements the FedAvg algorithm to aggregate client weights.
+    Aggregation is weighted based on the number of samples per client.
+
+    Args:
+        client_weights (list): List of model weights from each client.
+        client_data (list): List of client datasets (x), used to calculate weights.
+
+    Returns:
+        list: Weighted average of client weights.
+    """
+    # Calculate the total number of samples across all clients
+    total_samples = sum([len(data) for data in client_data])
+
+    # Calculate the weight for each client based on their sample size
+    client_sample_weights = [len(data) / total_samples for data in client_data]
+
+    # Perform weighted averaging of client weights
+    weighted_avg_weights = []
+    for layer in range(len(client_weights[0])):
+        weighted_layer = sum(
+            client_sample_weights[i] * client_weights[i][layer]
+            for i in range(len(client_weights))
+        )
+        weighted_avg_weights.append(weighted_layer)
+
+    return weighted_avg_weights
 
 
 """# Training and Saving the Results"""
