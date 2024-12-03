@@ -1,0 +1,15 @@
+nvidia-smi
+gpustat
+tmux new -s 'mert_gencturk_2' -> create new bash shell -> ctrl+b, d
+
+tmux a -t 'mert_gencturk'
+
+CUDA_VISIBLE_DEVICES=" 7" bash -c "python test.py"
+CUDA_VISIBLE_DEVICES="1,2" bash -c "python test_h_2.py"
+
+ps -up nvidia-smi -q -x | grep pid | sed -e 's/<pid>//g' -e 's/<\/pid>//g' -e 's/^[[:space:]]*//'
+
+CUDA_VISIBLE_DEVICES="2,3,4" RAY_gcs_rpc_server_reconnect_timeout_s="600" bash -c "python test_h_2.py"
+CUDA_VISIBLE_DEVICES="5,6,7" RAY_gcs_rpc_server_reconnect_timeout_s="600" bash -c "python test_eye.py"
+nvi
+CUDA_VISIBLE_DEVICES="0,1,2" RAY_gcs_rpc_server_reconnect_timeout_s="600" bash -c "python test_eye_2.py"

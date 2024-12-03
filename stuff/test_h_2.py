@@ -9,72 +9,75 @@ Original file is located at
 
 import flwr as fl
 from flwr.common import Metrics
-from flwr.common.typing import NDArrays, Scalar
+from flwr.common.typing import Scalar
 from collections import OrderedDict
 from typing import List, Tuple, Dict, Optional
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import RobustScaler
-from sklearn.preprocessing import PowerTransformer
 
-#import matplotlib.pyplot as plt
+from norms import *
+from utils import *
+
 import numpy as np
-import pandas as pd
+import csv
 import tensorflow as tf
-#import os
 
 from flwr.simulation.ray_transport.utils import enable_tf_gpu_growth
 from skew import *
 
-print("bas3")
 #os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
 enable_tf_gpu_growth()
 
 
 """# Global Constants (Dataset Specific)"""
-print("bas4")
 # global variables
 BATCH_SIZE = 8
 EPOCH = 150
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 NORMALIZATION_LAYER = ''
 NUM_CLIENTS = 10
 #NORMALIZATION_TYPE = ''
 EARLY_STOPPING_PATIENCE = 7
-DATASET_INPUT_SHAPE = (31,1)
+DATASET_INPUT_SHAPE = (12,1)
 IS_IMAGE_DATA = False
-#tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE) = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
-print("bas2")
-# variable arrays for each case
+
 X_trains_fed = np.zeros(1)
 Y_trains_fed = np.zeros(1)
 X_test_fed = np.zeros(1) # test sets are not actually splitted but we use it as a variable array
 Y_test_fed = np.zeros(1)
 X_val_fed = np.zeros(1)
 Y_val_fed = np.zeros(1)
-print("bas")
-# # constant arrays to always keep the originals
-# X_TRAIN = np.zeros(1)
-# Y_TRAIN = np.zeros(1)
-# X_VALIDATION = np.zeros(1)
-# Y_VALIDATION = np.zeros(1)
-# X_TEST= np.zeros(1)
-# Y_TEST= np.zeros(1)
+
 
 """# Dataset Retrieval"""
 
 from sklearn.model_selection import train_test_split
 
 def load_data(data_dir=""):
-    df = pd.read_csv(f"{data_dir}/bcw.csv",header = 0)
-    df.drop('id',axis=1,inplace=True)
-    df.drop('Unnamed: 32',axis=1,inplace=True)
-    df['diagnosis'] = df['diagnosis'].map({'M':1,'B':0})
-    X = df.drop('diagnosis', axis =1)
-    Y = df["diagnosis"]
-    x_train, x_test, y_train, y_test = train_test_split(X,Y, test_size = 0.2, shuffle = True, random_state = 42)
+    def load_X(filepath):
+        with open(filepath, mode='r') as file:
+            reader = csv.reader(file)
+            next(reader)  # Skip the header
+            X = [list(map(float, row[1:])) for row in reader]  # Convert data to floats
+        return X
 
-    # Split train data into training and validation sets
+    # Function to load Y data from CSV without Pandas
+    def load_Y(filepath):
+        with open(filepath, mode='r') as file:
+            reader = csv.reader(file)
+            next(reader)  # Skip the header
+            Y = [int(row[1]) for row in reader]  # Convert data to int (assuming one column)
+        return Y
+
+    # Load the processed data
+    X = load_X(f"processed_X.csv")
+    Y = load_Y(f"processed_Y.csv")
+    
+    
+    X = np.array(X)
+    Y = np.array(Y)
+
+
+    # Split data into training, testing, and validation sets
+    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, shuffle=True, random_state=42)
     x_train, x_vals, y_train, y_vals = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
     global X_trains_fed
@@ -84,43 +87,31 @@ def load_data(data_dir=""):
     global X_val_fed
     global Y_val_fed
 
-    X_trains_fed = np.array(x_train)
-    Y_trains_fed = np.array(y_train)
-    X_test_fed = np.array(x_test)
-    Y_test_fed = np.array(y_test)
-    X_val_fed = np.array(x_vals)
-    Y_val_fed = np.array(y_vals)
+    X_trains_fed = x_train
+    Y_trains_fed = y_train
+    X_test_fed = x_test
+    Y_test_fed = y_test
+    X_val_fed = x_vals
+    Y_val_fed = y_vals
 
     return
-    #return x_train, y_train, x_test, y_test
 
 
 def do_skew(skew_type, num_clients, X_data, Y_data):
-
-    #depends on dataset
-    ds_info = { 'num_clients' : num_clients , 'sample_shape' : DATASET_INPUT_SHAPE, 'num_classes':10 , 'seed':42}
-
     if(skew_type == 'feature_0.3'):
-      clientsData, clientsDataLabels = feature_skew_dist(x_train= X_data, y_train= Y_data, ds_info = ds_info, sigma = 0.3,
-            decentralized = True, display=False, is_tf=False)
+      clientsData, clientsDataLabels = feature_skew_dist(X_data,  Y_data,num_clients, sigma = 0.3, batch_size=BATCH_SIZE)
     elif(skew_type == 'feature_0.7'):
-      clientsData, clientsDataLabels = feature_skew_dist(x_train= X_data, y_train= Y_data, ds_info = ds_info, sigma = 0.7,
-            decentralized = True, display=False, is_tf=False)
+      clientsData, clientsDataLabels = feature_skew_dist(X_data,  Y_data,num_clients, sigma = 0.7, batch_size=BATCH_SIZE)
     elif(skew_type == 'label_5.0'):
-      clientsData, clientsDataLabels = label_skew_dist(x_train= X_data, y_train= Y_data, ds_info = ds_info, beta = 5.0,
-            decentralized = True, display=False, is_tf=False)
+      clientsData, clientsDataLabels = label_skew_dist(X_data,  Y_data,num_clients, 2, beta = 5, batch_size=BATCH_SIZE)
     elif(skew_type == 'label_0.5'):
-      clientsData, clientsDataLabels = label_skew_dist(x_train= X_data, y_train= Y_data, ds_info = ds_info, beta = 0.5,
-        decentralized = True, display=False, is_tf=False)
+      clientsData, clientsDataLabels = label_skew_dist(X_data,  Y_data,num_clients, 2, beta = 0.5, batch_size=BATCH_SIZE)
     elif(skew_type == 'quantity_5.0'):
-      clientsData, clientsDataLabels = qty_skew_dist(x_train= X_data, y_train= Y_data, ds_info = ds_info, beta = 5.0,
-            decentralized = True, display=False, is_tf=False)
+      clientsData, clientsDataLabels = qty_skew_dist(X_data,  Y_data,num_clients, beta = 5, batch_size=BATCH_SIZE)
     elif(skew_type == 'quantity_0.7'):
-      clientsData, clientsDataLabels = qty_skew_dist(x_train= X_data, y_train= Y_data, ds_info = ds_info, beta = 0.7,
-            decentralized = True, display=False, is_tf=False)
+      clientsData, clientsDataLabels = qty_skew_dist(X_data,  Y_data,num_clients, beta = 0.7, batch_size=BATCH_SIZE)
     elif(skew_type == 'default'):
-        clientsData, clientsDataLabels = iid_dist(x_train= X_data, y_train= Y_data, ds_info = ds_info,
-            decentralized = True, display=False)
+        clientsData, clientsDataLabels = iid_dist(X_data, Y_data, num_clients, batch_size=BATCH_SIZE)
     else:
         print('error')
 
@@ -130,90 +121,7 @@ def do_skew(skew_type, num_clients, X_data, Y_data):
 
 """# Normalization Methods"""
 
-def merge(data):
-  return np.concatenate(data, axis=0)
-
-def split(org_data, merged_array):
-    total_length = sum(arr.shape[0] for arr in org_data)
-    ratios = [arr.shape[0] / total_length for arr in org_data]
-    split_indices = np.cumsum([int(ratio * merged_array.shape[0]) for ratio in ratios[:-1]])
-    split_arrays = np.split(merged_array, split_indices)
-    return split_arrays
-
-def flatten_data(data):
-    return data.reshape(data.shape[0],-1)
-
-def flatten_data_for_clients(clientsData):
-    flattened_clients_data = [flatten_data(client_data) for client_data in clientsData]
-    return flattened_clients_data
-
-def back_to_image(data):
-    return data.reshape(data.shape[0], *DATASET_INPUT_SHAPE)
-
-def back_to_image_for_clients(clientsData):
-    back_to_image_data = [back_to_image(client_data) for client_data in clientsData]
-    return back_to_image_data
-
-
-
-def z_score(train,val,test):
-    scaler = StandardScaler()
-    scaler.fit(train,None)
-    return (scaler.transform(train), scaler.transform(val), scaler.transform(test))
-
-def min_max(train,val,test):
-    scaler = MinMaxScaler()
-    scaler.fit(train,None)
-    return (scaler.transform(train), scaler.transform(val), scaler.transform(test))
-
-def log_scaling(train, val, test):
-    return (np.log10(train + 1), np.log10(val + 1), np.log10(test + 1))
-
-def batch_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'batch_norm'
-    return
-
-def layer_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'layer_norm'
-    return
-
-def instance_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'instance_norm'
-    return
-
-def group_norm():
-    global NORMALIZATION_LAYER
-    NORMALIZATION_LAYER = 'group_norm'
-    return
-
-def box_cox(train,val,test):
-    transformer = PowerTransformer(method = 'box-cox')
-    transformer.fit(train,None)
-    #print("fit passed")
-    return (transformer.transform(train+1), transformer.transform(val+1),transformer.transform(test+1))
-
-def yeo_johnson(train,val,test):
-    transformer = PowerTransformer(method = 'yeo-johnson')
-    transformer.fit(train,None)
-    return (transformer.transform(train), transformer.transform(val),transformer.transform(test))
-
-
-def robust_scaling(train,val,test, with_centering=True, with_scaling=True, quantile_range=(25.0, 75.0)):
-    scaler = RobustScaler(with_centering=with_centering, with_scaling=with_scaling, quantile_range=quantile_range)
-    scaler.fit(train,None)
-    return (scaler.transform(train), scaler.transform(val),scaler.transform(test))
-
-def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
-
-
-    if(IS_IMAGE_DATA):
-        X_data = flatten_data_for_clients(X_data)
-        val_x = flatten_data_for_clients(val_x)
-        test_x = flatten_data_for_clients(test_x)
-
+def do_normalization(normalization_type, num_clients, X_data, val_x, test_x, Y_data, val_y, test_y):
 
     global NORMALIZATION_LAYER
 
@@ -256,46 +164,75 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = z_score(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_min_max':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = min_max(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_box_cox':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = box_cox(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_robust_scaling':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
+
         merged_train, merged_val, merged_test = robust_scaling(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'global_yeo_johnson':
         merged_train = merge(X_data)
         merged_val = merge(val_x)
         merged_test = merge(test_x)
+
+        merget_train_y = merge(Y_data)
+        merged_val_y = merge(val_y)
+        merged_test_y = merge(test_y)
         merged_train, merged_val, merged_test = yeo_johnson(merged_train, merged_val, merged_test)
-        X_data = split(X_data, merged_train)
-        val_x = split(val_x, merged_val)
-        test_x = split(test_x, merged_test)
+
+        X_data, Y_data = split(X_data, merged_train, merget_train_y)
+        val_x, val_y = split(val_x, merged_val, merged_val_y)
+        test_x, test_y = split(test_x, merged_test, merged_test_y)
 
     elif normalization_type == 'default':
         pass  # default case
@@ -303,22 +240,17 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x):
     else:
         print("error")
 
-
-    if(IS_IMAGE_DATA):
-        X_data = back_to_image_for_clients(X_data)
-        val_x = back_to_image_for_clients(val_x)
-        test_x = back_to_image_for_clients(test_x)
-
-    return X_data, val_x, test_x
+    return X_data, val_x, test_x, Y_data, val_y, test_y
 
 """# Network Model (Dataset Specific)"""
 
+
 def get_model():    
-    model = tf.keras.Sequential()
-    model.add(tf.keras.Dense(16, activation='relu', input_dim=30))
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Dense(16, activation='relu', input_dim=12))
     
     if NORMALIZATION_LAYER == 'batch_norm':
-        model.add(tf.keras.BatchNormalization())
+        model.add(tf.keras.layers.BatchNormalization())
     elif NORMALIZATION_LAYER == 'instance_norm':
         # Instance normalization is typically not directly supported, hence using GroupNormalization with group size of 1
         model.add(tf.keras.layers.GroupNormalization(groups=1))
@@ -326,13 +258,14 @@ def get_model():
         # Using an arbitrary group size, adjust based on the number of features or experimentation
         model.add(tf.keras.layers.GroupNormalization(groups=4))
     elif NORMALIZATION_LAYER == 'layer_norm':
-        model.add(tf.keras.LayerNormalization())
+        model.add(tf.keras.layers.LayerNormalization())
 
-    model.add(tf.keras.Dense(8, activation='relu'))
-    model.add(tf.keras.Dense(8, activation='relu'))
-    model.add(tf.keras.Dense(1, activation='sigmoid'))
+    model.add(tf.keras.layers.Dense(8, activation='relu'))
+    model.add(tf.keras.layers.Dense(8, activation='relu'))
+    model.add(tf.keras.layers.Dense(5, activation='softmax'))
 
     return model
+
 
 """# Flower Client (Dataset Specific)"""
 
@@ -352,7 +285,7 @@ class FlowerClient(fl.client.NumPyClient):
 
     def fit(self, parameters: NDArrays, config: Dict[str, Scalar]) -> NDArrays:
 
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='categorical_crossentropy', metrics=['accuracy'])
+        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
         self.model.set_weights(parameters)
 
@@ -364,7 +297,7 @@ class FlowerClient(fl.client.NumPyClient):
         return self.model.get_weights(), len(self.X_train), results
 
     def evaluate(self, parameters: NDArrays, config: Dict[str, Scalar])-> Tuple[float, int, Dict[str, Scalar]]:
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='categorical_crossentropy', metrics=['accuracy'])
+        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
         self.model.set_weights(parameters)
 
         loss, acc = self.model.evaluate(self.X_train, self.y_train, verbose=0)
@@ -507,7 +440,7 @@ def evaluate(
     """Centralized evaluation function"""
 
     model = get_model()
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='categorical_crossentropy' , metrics=['accuracy'])
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy' , metrics=['accuracy'])
 
     model.set_weights(parameters)
 
@@ -540,28 +473,26 @@ def get_results():
     Test Precision
     Test Recall
     '''
-    global X_test_fed, Y_test_fed
+    global X_test_fed, Y_test_fed, weights
 
     model = get_model()
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='categorical_crossentropy' , metrics=['accuracy'])
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy' , metrics=['accuracy'])
     model.set_weights(weights)
 
     test_loss, test_accuracy = model.evaluate(X_test_fed, Y_test_fed, batch_size=BATCH_SIZE, verbose=0)
 
     y_pred_probs = model.predict(X_test_fed)
-    y_pred = np.argmax(y_pred_probs, axis=1)  # Convert probabilities to class labels
-
+    y_pred = np.argmax(y_pred_probs, axis=1)
     # If y_test is one-hot encoded, convert it back to integer labels
     if len(Y_test_fed.shape) > 1:
         Y_test_fed = np.argmax(Y_test_fed, axis=1)
 
     # Calculate metrics
-    accuracy = accuracy_score(Y_test_fed, y_pred)
     precision = precision_score(Y_test_fed, y_pred, average='weighted')
     recall = recall_score(Y_test_fed, y_pred, average='weighted')
     f1 = f1_score(Y_test_fed, y_pred, average='weighted')
 
-    return accuracy, precision, recall, f1, test_loss
+    return test_accuracy, precision, recall, f1, test_loss
 
 def federated_train(x, y, num_clients):
 
@@ -626,7 +557,7 @@ parameters_dict = {
           'values': ['default', 'feature_0.3', 'feature_0.7', 'label_5.0', 'label_0.5', 'quantity_5.0', 'quantity_0.7']
         },
     'a_num_clients': {
-          'values': [10, 20, 50]
+          'values': [10,20, 30]
         },
     'c_normalization': {
           'values': ['local_z_score', 'local_min_max', 'batch_norm', 'layer_norm', 'group_norm', 'instance_norm', 'local_robust_scaling',
@@ -639,13 +570,13 @@ sweep_config['parameters'] = parameters_dict
 
 parameters_dict.update({
     'dataset': {
-        'value': 'BCW'},
+        'value': 'hepatisis'},
     'experiment_run': {
-        'value': '1'}
+        'value': '3'}
     })
 
-sweep_id = wandb.sweep(sweep_config, project="bcw_test_v1")
-#sweep_id = "xecrtjox" # to continue a sweep
+sweep_id = wandb.sweep(sweep_config, project="hepatisis_test_v3")
+sweep_id = "seqxm7je" # to continue a sweep
 import time
 
 def train(config = None):
@@ -656,7 +587,10 @@ def train(config = None):
 
         global NUM_CLIENTS
         global X_test_fed
+        global Y_test_fed
+
         global X_val_fed
+        global Y_val_fed
 
 
         NUM_CLIENTS = config['a_num_clients']
@@ -664,15 +598,18 @@ def train(config = None):
         load_data()
 
         clientsData, clientLabels = do_skew(config['b_skew'], config['a_num_clients'], X_trains_fed, Y_trains_fed)
-        val_x = split(clientsData, X_val_fed)
-        test_x = split(clientsData, X_test_fed)
+        val_x, val_y = split(clientsData, X_val_fed, Y_val_fed)
+        test_x, test_y = split(clientsData, X_test_fed, Y_test_fed)
 
         #validation and test datasets are normalized with same parameters train dataset is normalized.
         #Data distribution among clients are protected, for local normalization, val and test datasets are normalized with respect to their local train data normalization parameters.
-        normalizedData, val_x, test_x = do_normalization(config['c_normalization'], config['a_num_clients'], clientsData, val_x, test_x)
+        normalizedData, val_x, test_x, clientLabels, val_y, test_y = do_normalization(config['c_normalization'], config['a_num_clients'], clientsData, val_x, test_x, clientLabels, val_y, test_y)
 
         X_val_fed = merge(val_x)
+        Y_val_fed = merge(val_y)
+
         X_test_fed = merge(test_x)
+        Y_test_fed = merge(test_y)
 
         t1 = time.perf_counter(), time.process_time()
 
@@ -745,4 +682,4 @@ def train(config = None):
 
 
 wandb.agent(sweep_id, train)
-#wandb.agent(sweep_id, project="mnist_test_v6", function=train) # to continue a sweep
+wandb.agent(sweep_id, project="hepatisis_test_v3", function=train)

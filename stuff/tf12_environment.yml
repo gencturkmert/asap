@@ -1,4 +1,4 @@
-name: tfenv12
+name: tf12
 channels:
   - conda-forge
   - defaults

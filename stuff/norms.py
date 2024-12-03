@@ -45,7 +45,7 @@ def box_cox(train,val,test):
         transformer = PowerTransformer(method = 'box-cox')
         transformer.fit(train,None)
         #print("fit passed")
-        return (transformer.transform(train+1), transformer.transform(val+1),transformer.transform(test+1))
+        return (transformer.transform(train), transformer.transform(val),transformer.transform(test))
     else:
         return train, val, test
     

@@ -1,9 +1,0 @@
-nvidia-smi
-gpustat
-tmux new -s 'mert_gencturk_2' -> create new bash shell -> ctrl+b, d
-
-tmux a -t 'mert_gencturk'
-
-CUDA_VISIBLE_DEVICES=" 7" bash -c "python test.py"
-CUDA_VISIBLE_DEVICES=" 5,6" bash -c "python test_h_2.py"
-

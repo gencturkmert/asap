@@ -22,21 +22,25 @@ import tensorflow as tf
 
 from flwr.simulation.ray_transport.utils import enable_tf_gpu_growth
 from skew import *
+from tensorflow.keras.layers import Dense, Dropout, Flatten, LSTM, Bidirectional
+from tensorflow.keras import regularizers
+import os
 
+os.environ["WANDB_SILENT"] = "true"
 #os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
 enable_tf_gpu_growth()
 
 
 """# Global Constants (Dataset Specific)"""
 # global variables
-BATCH_SIZE = 8
-EPOCH = 150
+BATCH_SIZE = 128
+EPOCH = 100
 LEARNING_RATE = 0.001
 NORMALIZATION_LAYER = ''
 NUM_CLIENTS = 10
 #NORMALIZATION_TYPE = ''
 EARLY_STOPPING_PATIENCE = 7
-DATASET_INPUT_SHAPE = (12,1)
+DATASET_INPUT_SHAPE = (14,1)
 IS_IMAGE_DATA = False
 
 X_trains_fed = np.zeros(1)
@@ -52,33 +56,36 @@ Y_val_fed = np.zeros(1)
 from sklearn.model_selection import train_test_split
 
 def load_data(data_dir=""):
-    def load_X(filepath):
-        with open(filepath, mode='r') as file:
-            reader = csv.reader(file)
-            next(reader)  # Skip the header
-            X = [list(map(float, row[1:])) for row in reader]  # Convert data to floats
-        return X
+    # Open the CSV file
+    with open(f"{data_dir}eye_state.csv", mode='r') as file:
+        reader = csv.reader(file)
+        data = list(reader)
 
-    # Function to load Y data from CSV without Pandas
-    def load_Y(filepath):
-        with open(filepath, mode='r') as file:
-            reader = csv.reader(file)
-            next(reader)  # Skip the header
-            Y = [int(row[1]) for row in reader]  # Convert data to int (assuming one column)
-        return Y
+    # Separate headers and data
+    headers = data[0]
+    data = data[1:]  # Skip the header row
 
-    # Load the processed data
-    X = load_X(f"processed_X.csv")
-    Y = load_Y(f"processed_Y.csv")
+    target_index = headers.index("eyeDetection")
     
+    # Convert the target values to integers
+    for row in data:
+        row[target_index] = int(row[target_index])
+
+    # Convert the data to a numpy array for easier manipulation
+    data_np = np.array(data, dtype=float)
+
+    X = np.delete(data_np, target_index, axis=1)
+    Y = data_np[:, target_index]
     
-    X = np.array(X)
-    Y = np.array(Y)
-
-
-    # Split data into training, testing, and validation sets
+    print("X SHAPE:", X.shape)
+    print("Y SHAPE: ", Y.shape)
+    
     x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, shuffle=True, random_state=42)
     x_train, x_vals, y_train, y_vals = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
+    
+    print("X_TRAIN SHAPE", x_train.shape)
+    print("Y_TRAIN SHAPE", y_train.shape)
+
 
     global X_trains_fed
     global Y_trains_fed
@@ -135,10 +142,10 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x, Y_d
         NORMALIZATION_LAYER = 'instance_norm'
     elif normalization_type == 'group_norm':
         NORMALIZATION_LAYER = 'group_norm'
+        
     elif normalization_type == 'local_box_cox':
         for i in range(num_clients):
-            print(i)
-            X_data[i] = box_cox(X_data[i],val_x[i],test_x[i])
+            X_data[i], val_x[i], test_x[i] = box_cox(X_data[i],val_x[i],test_x[i])
 
     elif normalization_type == 'local_yeo_johnson':
         for i in range(num_clients):
@@ -245,25 +252,49 @@ def do_normalization(normalization_type, num_clients, X_data, val_x, test_x, Y_d
 """# Network Model (Dataset Specific)"""
 
 
-def get_model():    
-    model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Dense(16, activation='relu', input_dim=12))
+import tensorflow as tf
+
+def get_model(normalization_layer=''):
+    model = tf.keras.Sequential()
     
-    if NORMALIZATION_LAYER == 'batch_norm':
+    # Input layer
+    model.add(tf.keras.Input(shape=(14, 1)))
+    
+    # First LSTM layer
+    model.add(tf.keras.layers.LSTM(1024, return_sequences=True, implementation=2))
+    # Normalization after the first LSTM
+    if normalization_layer == 'batch_norm':
         model.add(tf.keras.layers.BatchNormalization())
-    elif NORMALIZATION_LAYER == 'instance_norm':
-        # Instance normalization is typically not directly supported, hence using GroupNormalization with group size of 1
+    elif normalization_layer == 'instance_norm':
         model.add(tf.keras.layers.GroupNormalization(groups=1))
-    elif NORMALIZATION_LAYER == 'group_norm':
-        # Using an arbitrary group size, adjust based on the number of features or experimentation
-        model.add(tf.keras.layers.GroupNormalization(groups=4))
-    elif NORMALIZATION_LAYER == 'layer_norm':
+    elif normalization_layer == 'group_norm':
+        model.add(tf.keras.layers.GroupNormalization(groups=2))
+    elif normalization_layer == 'layer_norm':
         model.add(tf.keras.layers.LayerNormalization())
-
-    model.add(tf.keras.layers.Dense(8, activation='relu'))
-    model.add(tf.keras.layers.Dense(8, activation='relu'))
-    model.add(tf.keras.layers.Dense(5, activation='softmax'))
-
+    else:
+        print("")
+    
+    model.add(tf.keras.layers.Dropout(0.5))
+    
+    # Second LSTM layer
+    model.add(tf.keras.layers.LSTM(1024, return_sequences=False, implementation=2))
+    # Normalization after the second LSTM
+    if normalization_layer == 'batch_norm':
+        model.add(tf.keras.layers.BatchNormalization())
+    elif normalization_layer == 'instance_norm':
+        model.add(tf.keras.layers.GroupNormalization(groups=1))
+    elif normalization_layer == 'group_norm':
+        model.add(tf.keras.layers.GroupNormalization(groups=2))
+    elif normalization_layer == 'layer_norm':
+        model.add(tf.keras.layers.LayerNormalization())
+    else:
+        print("")
+    
+    model.add(tf.keras.layers.Dropout(0.5))
+    
+    # Output layer
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
+    
     return model
 
 
@@ -285,11 +316,11 @@ class FlowerClient(fl.client.NumPyClient):
 
     def fit(self, parameters: NDArrays, config: Dict[str, Scalar]) -> NDArrays:
 
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-
+        self.model.compile(optimizer=tf.keras.optimizers.Adam(),loss='binary_crossentropy', metrics=['accuracy'])
+        lr_schedule = tf.keras.callbacks.LearningRateScheduler(lambda epoch: 0.001 * np.exp(-epoch / 10.))
         self.model.set_weights(parameters)
 
-        history = self.model.fit(self.X_train, self.y_train ,batch_size=BATCH_SIZE, epochs=1, verbose=0)
+        history = self.model.fit(self.X_train, self.y_train ,batch_size=BATCH_SIZE, epochs=1, verbose=0,callbacks=[lr_schedule])
         results = {
             "loss": history.history["loss"][0],
             "accuracy": history.history["accuracy"][0],
@@ -297,7 +328,7 @@ class FlowerClient(fl.client.NumPyClient):
         return self.model.get_weights(), len(self.X_train), results
 
     def evaluate(self, parameters: NDArrays, config: Dict[str, Scalar])-> Tuple[float, int, Dict[str, Scalar]]:
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        self.model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
         self.model.set_weights(parameters)
 
         loss, acc = self.model.evaluate(self.X_train, self.y_train, verbose=0)
@@ -440,7 +471,7 @@ def evaluate(
     """Centralized evaluation function"""
 
     model = get_model()
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy' , metrics=['accuracy'])
+    model.compile(optimizer='rmsprop', loss='binary_crossentropy' , metrics=['accuracy'])
 
     model.set_weights(parameters)
 
@@ -476,16 +507,13 @@ def get_results():
     global X_test_fed, Y_test_fed, weights
 
     model = get_model()
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='sparse_categorical_crossentropy' , metrics=['accuracy'])
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='binary_crossentropy' , metrics=['accuracy'])
     model.set_weights(weights)
 
     test_loss, test_accuracy = model.evaluate(X_test_fed, Y_test_fed, batch_size=BATCH_SIZE, verbose=0)
 
     y_pred_probs = model.predict(X_test_fed)
-    y_pred = np.argmax(y_pred_probs, axis=1)
-    # If y_test is one-hot encoded, convert it back to integer labels
-    if len(Y_test_fed.shape) > 1:
-        Y_test_fed = np.argmax(Y_test_fed, axis=1)
+    y_pred = (y_pred_probs > 0.5).astype(int)  # Convert probabilities to class labels
 
     # Calculate metrics
     precision = precision_score(Y_test_fed, y_pred, average='weighted')
@@ -502,6 +530,7 @@ def federated_train(x, y, num_clients):
     Y_trains_fed = y
 
     client_resources = {"num_cpus": 2}
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
     if tf.config.get_visible_devices("GPU"):
         client_resources["num_gpus"] = 1
 
@@ -557,11 +586,11 @@ parameters_dict = {
           'values': ['default', 'feature_0.3', 'feature_0.7', 'label_5.0', 'label_0.5', 'quantity_5.0', 'quantity_0.7']
         },
     'a_num_clients': {
-          'values': [10,20, 30]
+          'values': [10, 20, 30]
         },
     'c_normalization': {
           'values': ['local_z_score', 'local_min_max', 'batch_norm', 'layer_norm', 'group_norm', 'instance_norm', 'local_robust_scaling',
-                     'global_z_score', 'global_min_max','global_robust_scaling',
+                     'global_z_score', 'global_min_max','global_robust_scaling',"local_yeo_johnson","global_yeo_johnson","local_box_cox","global_box_cox",
                      'default']
         }
     }
@@ -570,13 +599,13 @@ sweep_config['parameters'] = parameters_dict
 
 parameters_dict.update({
     'dataset': {
-        'value': 'hepatisis'},
+        'value': 'Eye State'},
     'experiment_run': {
         'value': '1'}
     })
 
-sweep_id = wandb.sweep(sweep_config, project="hepatisis_test_v3")
-sweep_id = "wy75h21h" # to continue a sweep
+#sweep_id = wandb.sweep(sweep_config, project="EEG_4")
+sweep_id = "9kth3yj5" # to continue a sweep
 import time
 
 def train(config = None):
@@ -681,5 +710,5 @@ def train(config = None):
         best_loss = float("inf")
 
 
-wandb.agent(sweep_id, train)
-wandb.agent(sweep_id, project="hepatisis_test_v3", function=train)
+#wandb.agent(sweep_id, train)
+wandb.agent(sweep_id, project="EEG_4", function=train)
