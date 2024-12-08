@@ -1,26 +1,31 @@
 import numpy as np
-from norms import *
-from utils import *
 import argparse
 import numpy as np
 import csv
 import tensorflow as tf
-from skew import *
 import wandb
 import time
+import math
+import gc
+
+import sys
+import os
+
+from norms import *
+from utils import *
+from skew import *
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 
-
 """# Global Constants (Dataset Specific)"""
 # global variables
 BATCH_SIZE = 8
-EPOCH = 250
+EPOCH = 100
 LEARNING_RATE = 0.001
 NORMALIZATION_LAYER = ""
 NUM_CLIENTS = 10
-EARLY_STOPPING_PATIENCE = 20
+EARLY_STOPPING_PATIENCE = 7
 DATASET_INPUT_SHAPE = (20,)
 
 
@@ -48,12 +53,12 @@ def initialize_globals():
 
 def load_data(data_dir=""):
     # Load X data
-    with open(f"/content/drive/MyDrive/asap/stuff/parc/x.csv", mode="r") as file:
+    with open(f"x.csv", mode="r") as file:
         reader = csv.reader(file)
         x_data = np.array(list(reader), dtype=float)
 
     # Load Y data
-    with open(f"/content/drive/MyDrive/asap/stuff/parc/y.csv", mode="r") as file:
+    with open(f"y.csv", mode="r") as file:
         reader = csv.reader(file)
         y_data = np.array(list(reader), dtype=float)
 
@@ -290,7 +295,7 @@ def get_model():
 # Required for early stopping
 
 
-def get_results():
+def get_results(global_weights):
     """
     At the end of the federated learning process, calculates results and returns
     Test F1 Score
@@ -299,7 +304,7 @@ def get_results():
     Test Precision
     Test Recall
     """
-    global X_test_fed, Y_test_fed, global_weights
+    global X_test_fed, Y_test_fed
 
     model = get_model()
     model.compile(
@@ -319,16 +324,25 @@ def get_results():
 
     return test_loss, test_mae, test_r2
 
+def exponential_lr_decay(current_epoch,decay_rate=0.01):
+    return LEARNING_RATE # float(LEARNING_RATE * math.exp(-decay_rate * current_epoch))
 
 def federated_train(x, y, num_clients):
-    global global_weights, X_val_fed, Y_val_fed, best_r2, best_loss
+    global X_val_fed, Y_val_fed, best_r2, best_loss
+    
+    total_samples = sum([len(data) for data in x])
 
-    # Initialize client models and global model
-    models = [get_model() for _ in range(num_clients)]
-    global_model = get_model()
+    client_sample_weights = [len(data) / total_samples for data in x]
+
+    model = get_model()
+    optimizer = tf.keras.optimizers.Adam()
+    model.compile(
+        optimizer=optimizer,
+        loss="mean_squared_error",
+    )   
 
     # Initialize global weights
-    global_weights = global_model.get_weights()
+    global_weights = model.get_weights()
 
     # Initialize history and early stopping parameters
     history = {
@@ -341,41 +355,30 @@ def federated_train(x, y, num_clients):
     patience_counter = 0
 
     for epoch in range(EPOCH):
-        client_weights = []
+        client_weights = [np.zeros_like(layer) for layer in global_weights]
         client_train_losses = []
 
         # Training for each client
         for i in range(num_clients):
-            # Set model to current global weights
-            models[i].set_weights(global_weights)
-
-            # Compile the client model
-            models[i].compile(
-                optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-                loss="mean_squared_error",
-            )
-
-            # Train the client model on its respective data
-            history_per_client = models[i].fit(
-                x[i], y[i], batch_size=BATCH_SIZE, epochs=1, verbose=0
-            )
-
-            # Record client training loss
+            
+            model.set_weights(global_weights)
+            
+            optimizer.learning_rate.assign(exponential_lr_decay(current_epoch=epoch))
+            
+            history_per_client = model.fit(x[i], y[i], batch_size=BATCH_SIZE, epochs=1, verbose=0)
             client_train_losses.append(history_per_client.history["loss"][-1])
-
-            # Collect client weights
-            client_weights.append(models[i].get_weights())
-
+            client_weights = [
+                cw + fw for cw, fw in zip(client_weights, fedavg_per_client(model.get_weights(), client_sample_weights[i]))
+            ]            
         # Calculate distributed training loss (average of client losses)
         avg_train_loss = np.mean(client_train_losses)
         history["distributed_train_loss"].append(avg_train_loss)
 
-        # Apply FedAvg to aggregate client weights
-        global_weights = fedavg(client_weights,x)
+        global_weights = [np.copy(layer) for layer in client_weights]
 
         # Set global weights for the global model
-        global_model.set_weights(global_weights)
-        global_model.compile(
+        model.set_weights(global_weights)
+        model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
             loss="mean_squared_error",
         )
@@ -383,16 +386,16 @@ def federated_train(x, y, num_clients):
         # Evaluate centralized training loss (global model on all client training data)
         combined_x = np.concatenate(x, axis=0)
         combined_y = np.concatenate(y, axis=0)
-        centralized_train_loss = global_model.evaluate(
+        centralized_train_loss = model.evaluate(
             combined_x, combined_y, batch_size=BATCH_SIZE, verbose=0
         )
         history["centralized_train_loss"].append(centralized_train_loss)
 
-        val_loss = global_model.evaluate(
+        val_loss = model.evaluate(
             X_val_fed, Y_val_fed, batch_size=BATCH_SIZE, verbose=0
         )
         
-        y_pred = global_model.predict(X_val_fed)
+        y_pred = model.predict(X_val_fed)
         y_pred = np.squeeze(y_pred)  # Removes dimensions of size 1
         
         val_mae = mean_absolute_error(Y_val_fed, y_pred)
@@ -421,30 +424,17 @@ def federated_train(x, y, num_clients):
             if patience_counter >= EARLY_STOPPING_PATIENCE:
                 print(f"Early stopping at epoch {epoch + 1}")
                 break
+        
+        del client_weights    
+        gc.collect()
+        
 
-    test_loss, test_mae, test_r2 = get_results()
+    test_loss, test_mae, test_r2 = get_results(global_weights)
+    del global_weights
     return history, test_loss, test_mae, test_r2
 
 
-def fedavg(client_weights, client_data):
-    """
-    Implements the FedAvg algorithm to aggregate client weights.
-    Aggregation is weighted based on the number of samples per client.
-
-    Args:
-        client_weights (list): List of model weights from each client.
-        client_data (list): List of client datasets (x), used to calculate weights.
-
-    Returns:
-        list: Weighted average of client weights.
-    """
-    # Calculate the total number of samples across all clients
-    total_samples = sum([len(data) for data in client_data])
-
-    # Calculate the weight for each client based on their sample size
-    client_sample_weights = [len(data) / total_samples for data in client_data]
-
-    # Perform weighted averaging of client weights
+def fedavg(client_weights, client_sample_weights):
     weighted_avg_weights = []
     for layer in range(len(client_weights[0])):
         weighted_layer = sum(
@@ -456,7 +446,9 @@ def fedavg(client_weights, client_data):
     return weighted_avg_weights
 
 
-"""# Training and Saving the Results"""
+def fedavg_per_client(client_weights, client_sample_weight):
+    return [client_sample_weight * layer for layer in client_weights]
+
 
 
 def train(config=None):
@@ -464,6 +456,12 @@ def train(config=None):
 
         config = wandb.config
         tf.keras.backend.clear_session()
+        gc.collect()
+        
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+            
 
         global NUM_CLIENTS
         global X_test_fed
@@ -613,8 +611,8 @@ def parse_arguments():
 if __name__ == "__main__":
     args = parse_arguments()
     initialize_globals()
-
-    wandb.login()
+    
+    gc.collect()
 
     sweep_config = {"method": "grid"}
 
@@ -637,9 +635,7 @@ if __name__ == "__main__":
         "a_num_clients": {"values": [10, 20, 30]},
         "c_normalization": {
             "values": [
-                "local_box_cox",
                 "local_yeo_johnson",
-                "global_box_cox",
                 "global_yeo_johnson",
                 "local_z_score",
                 "local_min_max",
