@@ -25,7 +25,7 @@ EPOCH = 100
 LEARNING_RATE = 0.001
 NORMALIZATION_LAYER = ""
 NUM_CLIENTS = 10
-EARLY_STOPPING_PATIENCE = 7
+EARLY_STOPPING_PATIENCE = 15
 DATASET_INPUT_SHAPE = (20,)
 
 
@@ -66,10 +66,10 @@ def load_data(data_dir=""):
 
     # Split data into training, testing, and validation sets
     x_train, x_test, y_train, y_test = train_test_split(
-        x_data, y_data, test_size=0.2, shuffle=True, random_state=42
+        x_data, y_data, test_size=0.2, shuffle=True, random_state=31
     )
     x_train, x_vals, y_train, y_vals = train_test_split(
-        x_train, y_train, test_size=0.1, random_state=42
+        x_train, y_train, test_size=0.1, random_state=31
     )
 
     global X_trains_fed
@@ -92,11 +92,11 @@ def load_data(data_dir=""):
 def do_skew(skew_type, num_clients, X_data, Y_data):
     if skew_type == "feature_0.3":
         clientsData, clientsDataLabels = feature_skew_dist(
-            X_data, Y_data, num_clients, sigma=0.3, batch_size=BATCH_SIZE
+            X_data, Y_data, num_clients, sigma=0.01, batch_size=BATCH_SIZE
         )
     elif skew_type == "feature_0.7":
         clientsData, clientsDataLabels = feature_skew_dist(
-            X_data, Y_data, num_clients, sigma=0.7, batch_size=BATCH_SIZE
+            X_data, Y_data, num_clients, sigma=0.1, batch_size=BATCH_SIZE
         )
     elif skew_type == "label_5.0":
         clientsData, clientsDataLabels = label_skew_dist(
@@ -655,7 +655,7 @@ if __name__ == "__main__":
     sweep_config["parameters"] = parameters_dict
 
     parameters_dict.update(
-        {"dataset": {"value": "parcinson"}, "experiment_run": {"value": "1"}}
+        {"dataset": {"value": "parcinson"}, "experiment_run": {"value": "2"}}
     )
 
     sweep_id = wandb.sweep(sweep_config, project=args.project)
