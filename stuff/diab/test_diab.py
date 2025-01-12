@@ -7,7 +7,7 @@ import wandb
 import time
 import math
 import gc
-
+import pandas as pd
 import sys
 import os
 
@@ -16,7 +16,7 @@ from utils import *
 from skew import *
 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, precision_score, recall_score, classification_report
 
 """# Global Constants (Dataset Specific)"""
 # global variables
@@ -54,12 +54,14 @@ def initialize_globals():
 
 def load_data(data_dir=""):
     # Load X data
-    with open(f"diabet.csv", mode="r") as file:
-        reader = csv.reader(file)
-        x_data = np.array(list(reader), dtype=float)
-
-    y_data = x_data['readmitted']
-    x_data = x_data.drop(["encounter_id", "patient_nbr","readmitted"], axis=1)
+    file_path = "/home/mert.gencturk/norm/asap/stuff/diab/balanced_diabet.csv"
+    df = pd.read_csv(file_path)
+    
+    y_data = df["readmitted"].to_numpy()
+    
+    df = df.drop(columns=["encounter_id", "patient_nbr", "readmitted"])
+    
+    x_data = df.to_numpy()
     # Split data into training, testing, and validation sets
     x_train, x_test, y_train, y_test = train_test_split(
         x_data, y_data, test_size=0.2, shuffle=True, random_state=31
@@ -305,12 +307,14 @@ def get_results(global_weights):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
         loss="binary_crossentropy",
+        metrics=["accuracy"],  # Add accuracy as a metric
     )
     model.set_weights(global_weights)
 
     test_loss, test_accuracy = model.evaluate(X_test_fed, Y_test_fed, batch_size=BATCH_SIZE, verbose=1)
 
     y_pred = model.predict(X_test_fed)
+    y_pred = (y_pred.flatten() >= 0.5).astype(int)
     
     f1 = f1_score(Y_test_fed, y_pred)
     precision = precision_score(Y_test_fed, y_pred)
@@ -345,6 +349,7 @@ def federated_train(x, y, num_clients):
         "val_f1": [],
         "distributed_train_loss": [],
         "centralized_train_loss": [],
+        "centralized_train_acc": []
     }
     patience_counter = 0
 
@@ -375,24 +380,29 @@ def federated_train(x, y, num_clients):
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
             loss="binary_crossentropy",
+            metrics=["accuracy"],  # Add accuracy as a metric
         )
 
         # Evaluate centralized training loss (global model on all client training data)
         combined_x = np.concatenate(x, axis=0)
         combined_y = np.concatenate(y, axis=0)
-        centralized_train_loss = model.evaluate(
+        centralized_train_loss, centralized_train_acc = model.evaluate(
             combined_x, combined_y, batch_size=BATCH_SIZE, verbose=0
         )
         history["centralized_train_loss"].append(centralized_train_loss)
+        history["centralized_train_acc"].append(centralized_train_acc)
 
         val_loss, val_acc = model.evaluate(
             X_val_fed, Y_val_fed, batch_size=BATCH_SIZE, verbose=0
         )
         
         y_pred = model.predict(X_val_fed)
-        y_pred = np.squeeze(y_pred)  # Removes dimensions of size 1
+        y_pred = (y_pred.flatten() >= 0.5).astype(int)
         
-        val_f1 = f1_score(Y_val_fed, y_pred)
+        print("Pred Shape", y_pred.shape)
+        print("Val Y Shape", Y_val_fed.shape)
+        
+        val_f1 = f1_score(Y_val_fed, y_pred, average="weighted", zero_division=1)
 
         # Store validation metrics in history
         history["val_loss"].append(val_loss)
@@ -404,13 +414,13 @@ def federated_train(x, y, num_clients):
         print(f"  Centralized Train Loss: {centralized_train_loss}")
         print(f"  Validation Loss: {val_loss}")
         print(f"  Validation Acc: {val_acc}")
-        print(f"  Validation R1: {val_f1}")
-        print(f"  Global Weights Shape: {[np.array(w).shape for w in global_weights]}")
+        print(f"  Validation F1: {val_f1}")
         
         # Early stopping logic
         if val_loss < best_loss - 0.00001:
             best_loss = val_loss
             best_f1 = val_f1
+            best_acc = val_acc
             patience_counter = 0
         else:
             patience_counter += 1
@@ -498,6 +508,7 @@ def train(config=None):
         history, test_accuracy, test_loss, f1, precision, recall = federated_train(
             normalizedData, clientLabels, config["a_num_clients"]
         )
+        print("Test Results:",test_accuracy, test_loss, f1, precision, recall)
 
         t2 = time.perf_counter(), time.process_time()
         t = t2[1] - t1[1]
@@ -559,6 +570,23 @@ def train(config=None):
                 )
             }
         )
+        
+        centralized_acc_table = wandb.Table(
+            data=[
+                [i, loss] for i, loss in enumerate(history["centralized_train_acc"])
+            ],
+            columns=["Epoch", "Centralized Accuracy"],
+        )
+        wandb.log(
+            {
+                "centralized_accuracy": wandb.plot.line(
+                    centralized_acc_table,
+                    "Epoch",
+                    "Centralized Accuracy",
+                    title="Centralized Training Accuracy vs Epoch",
+                )
+            }
+        )
 
         # Log validation metrics
         validation_loss_table = wandb.Table(
@@ -603,6 +631,7 @@ def parse_arguments():
     )
     parser.add_argument("--sweep_id", type=str, required=False, help="WandB Sweep ID")
     parser.add_argument("--project", type=str, required=True, help="WandB Project Name")
+    parser.add_argument("--run",type=int, required=True,help="Run Count")
     return parser.parse_args()
 
 
@@ -653,7 +682,7 @@ if __name__ == "__main__":
     sweep_config["parameters"] = parameters_dict
 
     parameters_dict.update(
-        {"dataset": {"value": "diabetes"}, "experiment_run": {"value": "1"}}
+        {"dataset": {"value": "diabetes"}, "experiment_run": {"value": f"{args.run}"}}
     )
 
     sweep_id = wandb.sweep(sweep_config, project=args.project)
