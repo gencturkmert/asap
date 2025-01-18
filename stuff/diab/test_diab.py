@@ -15,6 +15,7 @@ from norms import *
 from utils import *
 from skew import *
 
+from sklearn.utils import resample
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, precision_score, recall_score, classification_report
 
@@ -24,9 +25,8 @@ BATCH_SIZE = 32
 EPOCH = 100
 LEARNING_RATE = 0.001
 NORMALIZATION_LAYER = ""
-NUM_CLIENTS = 10
 EARLY_STOPPING_PATIENCE = 7
-DATASET_INPUT_SHAPE = (44,)
+DATASET_INPUT_SHAPE = 21
 
 
 def initialize_globals():
@@ -54,15 +54,29 @@ def initialize_globals():
 
 def load_data(data_dir=""):
     # Load X data
-    file_path = "/home/mert.gencturk/norm/asap/stuff/diab/balanced_diabet.csv"
-    df = pd.read_csv(file_path)
+    file_path = "/home/mert.gencturk/norm/asap/stuff/diab/diab_5050.csv"
     
-    y_data = df["readmitted"].to_numpy()
+    data = pd.read_csv(file_path)
+    #data = data.drop(columns=["encounter_id", "patient_nbr"])
+
+    #class_0 = data[data["readmitted"] == 0]
+    #class_1 = data[data["readmitted"] == 1]
+
+    # Resample both classes to have 50k samples each
+    #class_0_resampled = resample(class_0, replace=False, n_samples=60000, random_state=31)
+    #class_1_resampled = resample(class_1, replace=True, n_samples=50000, random_state=31)
+
+    # Combine resampled data
+    #resampled_data = pd.concat([class_0_resampled, class_1_resampled])
+
+    # Shuffle the data to mix the classes
+    #resampled_data = resampled_data.sample(frac=1, random_state=31).reset_index(drop=True)
     
-    df = df.drop(columns=["encounter_id", "patient_nbr", "readmitted"])
+    y_data = data["Diabetes_binary"].to_numpy()
     
-    x_data = df.to_numpy()
-    # Split data into training, testing, and validation sets
+    data.drop("Diabetes_binary",axis=1, inplace=True)
+    x_data = data.to_numpy()
+    
     x_train, x_test, y_train, y_test = train_test_split(
         x_data, y_data, test_size=0.2, shuffle=True, random_state=31
     )
@@ -267,7 +281,7 @@ def do_normalization(
 def get_model():
     model = tf.keras.models.Sequential()
 
-    model.add(tf.keras.layers.Dense(16, input_dim=44, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)))
+    model.add(tf.keras.layers.Dense(10, input_dim=DATASET_INPUT_SHAPE, activation='sigmoid'))
 
     if NORMALIZATION_LAYER == "batch_norm":
         model.add(tf.keras.layers.BatchNormalization())
@@ -278,9 +292,9 @@ def get_model():
     elif NORMALIZATION_LAYER == "layer_norm":
         model.add(tf.keras.layers.LayerNormalization())
 
-    model.add(tf.keras.layers.Dense(8, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)))
+    #model.add(tf.keras.layers.Dense(4, activation='relu'))
 
-    model.add(tf.keras.layers.Dense(4, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)))
+    #model.add(tf.keras.layers.Dense(4, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)))
 
     model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
     return model
@@ -319,6 +333,7 @@ def get_results(global_weights):
     f1 = f1_score(Y_test_fed, y_pred)
     precision = precision_score(Y_test_fed, y_pred)
     recall = recall_score(Y_test_fed, y_pred)
+    print(classification_report(Y_test_fed,y_pred))
     
     return test_accuracy, test_loss, f1, precision, recall
 
@@ -466,14 +481,12 @@ def train(config=None):
             tf.config.experimental.set_memory_growth(gpu, True)
             
 
-        global NUM_CLIENTS
         global X_test_fed
         global Y_test_fed
 
         global X_val_fed
         global Y_val_fed
 
-        NUM_CLIENTS = config["a_num_clients"]
 
         load_data()
 
