@@ -63,8 +63,8 @@ def load_data(data_dir=""):
     #class_1 = data[data["readmitted"] == 1]
 
     # Resample both classes to have 50k samples each
-    #class_0_resampled = resample(class_0, replace=False, n_samples=60000, random_state=31)
-    #class_1_resampled = resample(class_1, replace=True, n_samples=50000, random_state=31)
+    #class_0_resampled = resample(class_0, replace=False, n_samples=60000, random_state53)
+    #class_1_resampled = resample(class_1, replace=True, n_samples=50000, random_state=53)
 
     # Combine resampled data
     #resampled_data = pd.concat([class_0_resampled, class_1_resampled])
@@ -78,10 +78,10 @@ def load_data(data_dir=""):
     x_data = data.to_numpy()
     
     x_train, x_test, y_train, y_test = train_test_split(
-        x_data, y_data, test_size=0.2, shuffle=True, random_state=31
+        x_data, y_data, test_size=0.2, shuffle=True, random_state=53
     )
     x_train, x_vals, y_train, y_vals = train_test_split(
-        x_train, y_train, test_size=0.1, random_state=31
+        x_train, y_train, test_size=0.1, random_state=53
     )
 
     global X_trains_fed

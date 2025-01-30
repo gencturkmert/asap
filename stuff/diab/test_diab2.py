@@ -78,10 +78,10 @@ def load_data(data_dir=""):
     x_data = data.to_numpy()
     
     x_train, x_test, y_train, y_test = train_test_split(
-        x_data, y_data, test_size=0.2, shuffle=True, random_state=31
+        x_data, y_data, test_size=0.2, shuffle=True, random_state=42
     )
     x_train, x_vals, y_train, y_vals = train_test_split(
-        x_train, y_train, test_size=0.1, random_state=31
+        x_train, y_train, test_size=0.1, random_state=42
     )
 
     global X_trains_fed
